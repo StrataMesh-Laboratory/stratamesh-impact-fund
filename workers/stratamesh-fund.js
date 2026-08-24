@@ -1,17 +1,11 @@
 /**
  * stratamesh-fund — fund.calhegasmorais.pt
- * V0.2: Explorer + contributor payout accounts
+ * v0.2.1 — bugfix + hybrid style (calhegasmorais.pt × GitHub minimal)
  *
- * GitHub = evidence layer
- * Fund = statistics + payout routing (no STRATA / no GDA in V0)
- *
- * Payout paths:
- *  1. Operator (amcmorais): widget → https://calhegasmorais.pt/pagamentos (ENI payment-intent)
- *  2. Claimed contributors: GitHub OAuth → register payout account (opaque provider id)
- *  3. Grantor prepaid card: choose integrated provider → purchase redirect → ship to
- *     contributor GitHub-registered public-domain email
+ * GitHub = evidence · Fund = stats + payout routing
+ * No STRATA / no GDA in V0 · no iframe embed of /pagamentos (XFO SAMEORIGIN)
  */
-const VERSION = "0.2.0-payout-accounts";
+const VERSION = "0.2.1-hybrid-ui";
 
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
@@ -21,7 +15,6 @@ const REPOS = [
   { owner: ORG, name: "stratamesh-impact-fund", role: "This fund application" },
 ];
 
-/** Known operator payout — already live on /pagamentos */
 const OPERATOR_PAYOUT = {
   github_login: "amcmorais",
   github_user_id: 121771985,
@@ -30,33 +23,26 @@ const OPERATOR_PAYOUT = {
   status: "active",
   widget_url: "https://calhegasmorais.pt/pagamentos",
   widget_note:
-    "AMCM ENI payment portal — generates a unique bank-transfer instruction (IBAN not published on the public page). Purpose: donation to the Calhegas Morais Node / StrataMesh project.",
+    "AMCM ENI payment portal — unique bank-transfer instruction (IBAN not published on the public page). Purpose: donation to the Calhegas Morais Node / StrataMesh project.",
   payment_intent_api: "https://calhegasmorais.pt/api/payment-intent",
   payment_intent_purpose: "donation",
   contact: "geral@eni.calhegasmorais.pt",
 };
 
-/**
- * Prepaid card catalog (grantor chooses; redirect to provider purchase page).
- * Card is then sent to the contributor's GitHub-registered public-domain email.
- * Providers are integration slots — configure real product URLs/API keys in env when live.
- */
 const PREPAID_PROVIDERS = [
   {
     id: "wise_receive",
     name: "Wise (receive / card path)",
     kind: "prepaid_or_receive",
-    description:
-      "Grantor completes purchase or transfer on the provider site; delivery uses the contributor email confirmed after GitHub claim.",
-    redirect_url: null, // set via env or ops when contract is active
+    description: "Grantor completes purchase on the provider site; delivery uses the email confirmed after GitHub claim.",
+    redirect_url: null,
     status: "planned",
   },
   {
     id: "stripe_issuing_slot",
     name: "Stripe Issuing (virtual/physical card slot)",
     kind: "prepaid_card",
-    description:
-      "API-integrated issuing when credentials are bound; card details delivered out-of-band to the registered email.",
+    description: "API-integrated issuing when credentials are bound; details delivered to the registered email.",
     redirect_url: null,
     status: "planned",
   },
@@ -64,47 +50,17 @@ const PREPAID_PROVIDERS = [
     id: "manual_grantor_card",
     name: "Grantor-selected prepaid (redirect catalog)",
     kind: "prepaid_card",
-    description:
-      "Grantor picks a supported retail prepaid product, buys on the provider page, and ships to the contributor's GitHub public-domain email.",
+    description: "Grantor buys a supported prepaid product and ships to the contributor’s GitHub public-domain email.",
     redirect_url: null,
     status: "available_process",
   },
 ];
 
-const SECURITY = {
-  "Content-Security-Policy":
-    "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com https://calhegasmorais.pt; frame-src https://calhegasmorais.pt https://eni.calhegasmorais.pt; frame-ancestors 'none'",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "X-Content-Type-Options": "nosniff",
-  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
-};
-
-function json(data, status = 200, extra = {}) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-      ...SECURITY,
-      ...extra,
-    },
-  });
-}
-
-function html(body, status = 200) {
-  return new Response(body, {
-    status,
-    headers: { "Content-Type": "text/html; charset=utf-8", ...SECURITY },
-  });
-}
-
 const METHODOLOGY_V01 = {
   version: "0.1",
   title: "Descriptive statistics emphasis (not scientific value)",
   currency: "EUR",
-  notes:
-    "Weights guide human allocation discussion in early epochs. They are not a proven measure of engineering value.",
+  notes: "Weights guide human allocation discussion in early epochs — not a proven measure of engineering value.",
   metrics: {
     merged_pr: 1.0,
     review: 0.25,
@@ -116,89 +72,147 @@ const METHODOLOGY_V01 = {
   requires_human_approval: true,
 };
 
-function css() {
-  return `
-    :root {
-      --bg: #0b0f14; --card: #121821; --text: #e8eef6; --muted: #9aabbd;
-      --accent: #5b9fd4; --line: #243041; --ok: #6bcb8b; --warn: #e0b35a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: radial-gradient(1200px 600px at 10% -10%, #1a2740 0%, var(--bg) 55%);
-      color: var(--text); line-height: 1.55; min-height: 100vh;
-    }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
-    header { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; flex-wrap: wrap; margin-bottom: 1.5rem; }
-    .brand { font-weight: 700; letter-spacing: .02em; }
-    .muted { color: var(--muted); }
-    h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); margin: 0 0 .5rem; }
-    h2 { font-size: 1.1rem; margin: 0 0 .6rem; }
-    .tag { color: var(--muted); font-size: 1.05rem; margin-bottom: 1rem; }
-    .lead { font-size: 1.05rem; max-width: 65ch; }
-    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.25rem 0 1.5rem; }
-    .btn {
-      display: inline-block; padding: .65rem 1rem; border-radius: 8px;
-      border: 1px solid var(--line); background: var(--card); color: var(--text); font-weight: 600;
-    }
-    .btn.primary { background: #1e4f7a; border-color: #2a6aa3; }
-    .btn.ghost { background: transparent; }
-    section {
-      background: color-mix(in srgb, var(--card) 88%, transparent);
-      border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.35rem; margin: 1rem 0;
-    }
-    table { width: 100%; border-collapse: collapse; font-size: .95rem; }
-    th, td { text-align: left; padding: .5rem .35rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { color: var(--muted); font-weight: 600; }
-    .pill {
-      display: inline-block; font-size: .75rem; padding: .15rem .5rem; border-radius: 999px;
-      border: 1px solid var(--line); margin-bottom: .75rem;
-    }
-    .pill.ok { color: var(--ok); }
-    .pill.warn { color: var(--warn); }
-    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; }
-    footer { margin-top: 2.5rem; color: var(--muted); font-size: .85rem; }
-    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .stat { font-size: 1.35rem; font-weight: 700; }
-    .avatar { width: 36px; height: 36px; border-radius: 50%; vertical-align: middle; margin-right: .5rem; }
-    iframe.pay-widget {
-      width: 100%; min-height: 520px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
-    }
-    .steps { margin: .5rem 0 0; padding-left: 1.2rem; }
-    .steps li { margin: .35rem 0; }
-  `;
+const SECURITY = {
+  "Content-Security-Policy":
+    "default-src 'self'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+};
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=60",
+      ...SECURITY,
+    },
+  });
 }
 
-function shell({ lang, path, title, body }) {
+function html(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=60",
+      ...SECURITY,
+    },
+  });
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Hybrid: site tokens + GitHub-like density */
+function css() {
+  return `
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap');
+:root{
+  --bg:#0a0a0b;--fg:#e8e6e3;--muted:#8a8780;--line:#1c1c1f;--line2:#2a2a2e;
+  --accent:#c4b5a0;--card:#111113;--ok:#6b8f71;--warn:#c4a35a;--err:#c47a6a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans',system-ui,sans-serif;font-weight:300;line-height:1.55;min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--fg)}
+.wrap{max-width:880px;margin:0 auto;padding:0 1.25rem 3.5rem}
+.top{position:sticky;top:0;z-index:20;background:rgba(10,10,11,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);margin:0 -1.25rem 1.75rem;padding:0 1.25rem}
+.top-inner{display:flex;justify-content:space-between;align-items:center;gap:1rem;min-height:48px;flex-wrap:wrap}
+.brand{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.brand strong{color:var(--fg);font-weight:500}
+.nav{font-family:'IBM Plex Mono',monospace;font-size:.65rem;letter-spacing:.08em;display:flex;flex-wrap:wrap;gap:.15rem .85rem;align-items:center}
+.nav a{color:var(--muted)}.nav a:hover,.nav a.active{color:var(--fg)}
+.nav .sep{opacity:.35;user-select:none}
+.kicker{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 .65rem}
+h1{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:clamp(1.85rem,4.5vw,2.55rem);letter-spacing:-.02em;line-height:1.15;margin:0 0 .55rem;color:var(--fg)}
+h2{font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;font-weight:500;color:var(--fg);margin:0 0 .75rem;padding-bottom:.45rem;border-bottom:1px solid var(--line)}
+.lead{font-size:1.02rem;color:var(--muted);max-width:40rem;margin:0 0 1.25rem}
+.tag{color:var(--muted);font-size:.95rem;margin:0 0 1rem}
+.muted{color:var(--muted)}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:.78rem}
+.actions{display:flex;flex-wrap:wrap;gap:.55rem;margin:1.1rem 0 1.5rem}
+.btn{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;padding:.55rem .9rem;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--fg);font-weight:500}
+.btn:hover{border-color:var(--accent);color:var(--fg);text-decoration:none}
+.btn.primary{background:var(--card);border-color:var(--accent);color:var(--fg)}
+.btn.primary:hover{background:#18181b}
+.section{margin:1.35rem 0;padding:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:1rem 1.1rem;margin:1rem 0}
+.grid{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:1rem 0 1.35rem}
+.stat-box{border:1px solid var(--line);border-radius:4px;padding:.85rem 1rem;background:var(--card)}
+.stat{font-family:'IBM Plex Mono',monospace;font-size:1.25rem;font-weight:500;color:var(--fg)}
+.stat-label{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:.25rem}
+.pill{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;padding:.25rem .5rem;border:1px solid var(--line2);border-radius:2px;color:var(--muted)}
+.pill.ok{border-color:#2a3a2c;color:var(--ok)}
+.pill.warn{border-color:#3a3420;color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:.55rem .4rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+tr:hover td{background:rgba(255,255,255,.015)}
+.avatar{width:28px;height:28px;border-radius:50%;vertical-align:middle;margin-right:.45rem;border:1px solid var(--line)}
+.steps{margin:.4rem 0 0;padding-left:1.15rem;color:var(--muted)}
+.steps li{margin:.35rem 0}
+.note{font-size:.88rem;border-left:2px solid var(--line2);padding:.45rem 0 .45rem .85rem;margin:1rem 0;color:var(--muted)}
+footer{margin-top:2.75rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
+footer .mono{font-size:.65rem;letter-spacing:.04em;margin-top:.4rem}
+.hr{border:0;border-top:1px solid var(--line);margin:1.5rem 0}
+code{font-family:'IBM Plex Mono',monospace;font-size:.8rem;background:var(--card);padding:.1rem .3rem;border-radius:2px;border:1px solid var(--line)}
+ul.plain{margin:.4rem 0;padding-left:1.1rem;color:var(--muted)}
+  `.trim();
+}
+
+function shell({ lang, path, title, active, body }) {
   const pt = lang === "pt";
+  const enQ = pt ? "" : "?lang=en";
+  const homeHref = pt ? "/" : "/en";
+  const nav = `
+    <nav class="nav" aria-label="primary">
+      <a href="${homeHref}" class="${active === "home" ? "active" : ""}">${pt ? "Início" : "Home"}</a>
+      <span class="sep">·</span>
+      <a href="/contributors${enQ}" class="${active === "contributors" ? "active" : ""}">${pt ? "Contribuidores" : "Contributors"}</a>
+      <span class="sep">·</span>
+      <a href="/claim${enQ}" class="${active === "claim" ? "active" : ""}">${pt ? "Reclamar" : "Claim"}</a>
+      <span class="sep">·</span>
+      <a href="${pt ? "/en" : "/"}">${pt ? "EN" : "PT"}</a>
+      <span class="sep">·</span>
+      <a href="https://calhegasmorais.pt/">Nó</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund">GitHub</a>
+    </nav>`;
   return `<!DOCTYPE html>
 <html lang="${pt ? "pt-PT" : "en-GB"}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${title}</title>
-  <link rel="canonical" href="https://fund.calhegasmorais.pt${path}"/>
+  <title>${esc(title)}</title>
+  <meta name="description" content="${pt
+    ? "Fundo agrupado StrataMesh — evidência GitHub, estatísticas comparáveis, bolsas EUR/USD."
+    : "StrataMesh pooled fund — GitHub evidence, comparable statistics, EUR/USD grants."}"/>
+  <link rel="canonical" href="https://fund.calhegasmorais.pt${path.split("?")[0]}"/>
   <link rel="alternate" hreflang="pt-PT" href="https://fund.calhegasmorais.pt/"/>
   <link rel="alternate" hreflang="en-GB" href="https://fund.calhegasmorais.pt/en"/>
   <style>${css()}</style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div class="brand"><a href="${pt ? "/" : "/en"}" style="color:inherit;text-decoration:none">StrataMesh Impact Fund</a></div>
-      <div class="muted">
-        <a href="${pt ? "/en" : "/"}">${pt ? "English" : "Português"}</a> ·
-        <a href="/contributors${pt ? "" : "?lang=en"}">${pt ? "Contribuidores" : "Contributors"}</a> ·
-        <a href="https://calhegasmorais.pt/">calhegasmorais.pt</a> ·
-        <a href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund">GitHub</a>
+    <header class="top">
+      <div class="top-inner">
+        <a class="brand" href="${homeHref}" style="text-decoration:none"><strong>StrataMesh</strong> · Impact Fund</a>
+        ${nav}
       </div>
     </header>
     ${body}
     <footer>
-      AMCM ENI · StrataMesh Laboratory · ${pt ? "Lisboa" : "Lisbon"} · ${pt ? "laboratório" : "laboratory"}<br/>
-      <span class="mono">stratamesh-fund ${VERSION}</span>
+      AMCM ENI · <a href="https://github.com/StrataMesh-Laboratory">StrataMesh Laboratory</a> · ${pt ? "Lisboa" : "Lisbon"} · lab<br/>
+      <div class="mono">stratamesh-fund ${VERSION} · no STRATA in V0</div>
     </footer>
   </div>
 </body>
@@ -208,157 +222,141 @@ function shell({ lang, path, title, body }) {
 function homePage(lang) {
   const pt = lang === "pt";
   const path = pt ? "/" : "/en";
-  const t = pt
-    ? {
-        title: "StrataMesh Impact Fund",
-        tag: "Fundo agrupado para quem constrói a StrataMesh",
-        lead:
-          "Recolhemos dados de contribuição publicamente verificáveis no GitHub, tornamo-los comparáveis e ligamos cada contribuidor a uma conta de desembolso — para bolsas transparentes em EUR/USD.",
-        phase: "Fase 1–2 · Explorer + contas de desembolso",
-        fund: "Donativo ao operador",
-        explore: "Lista de contribuidores",
-        how: "Como funciona o desembolso",
-        principle:
-          "O Fundo não substitui o GitHub. Consome evidência pública, agrega estatísticas e encaminha pagamentos para contas registadas ou cartões pré-pagos escolhidos pelo grantor.",
-      }
-    : {
-        title: "StrataMesh Impact Fund",
-        tag: "A pooled fund for the people building StrataMesh",
-        lead:
-          "We collect publicly verifiable GitHub contribution data, make it comparable, and link each contributor to a payout account — for transparent EUR/USD grants.",
-        phase: "Phase 1–2 · Explorer + payout accounts",
-        fund: "Donate to operator",
-        explore: "Contributor list",
-        how: "How payout works",
-        principle:
-          "The Fund does not replace GitHub. It consumes public evidence, aggregates statistics, and routes payments to registered accounts or grantor-chosen prepaid cards.",
-      };
-
+  const enQ = pt ? "" : "?lang=en";
   const body = `
-    <p class="pill ok">${t.phase}</p>
-    <h1>${t.title}</h1>
-    <p class="tag">${t.tag}</p>
-    <p class="lead">${t.lead}</p>
+    <p class="kicker">${pt ? "Fase 1–2 · Explorer + contas de desembolso" : "Phase 1–2 · Explorer + payout accounts"}</p>
+    <h1>StrataMesh Impact Fund</h1>
+    <p class="tag">${pt ? "Fundo agrupado para quem constrói a StrataMesh" : "A pooled fund for the people building StrataMesh"}</p>
+    <p class="lead">${
+      pt
+        ? "Recolhemos dados publicamente verificáveis no GitHub, tornamo-los comparáveis e ligamos cada contribuidor a uma conta de desembolso — para bolsas transparentes em EUR/USD."
+        : "We collect publicly verifiable GitHub contribution data, make it comparable, and link each contributor to a payout account — for transparent EUR/USD grants."
+    }</p>
     <div class="actions">
-      <a class="btn primary" href="#operator-pay">${t.fund}</a>
-      <a class="btn ghost" href="/contributors${pt ? "" : "?lang=en"}">${t.explore}</a>
-      <a class="btn ghost" href="#payout">${t.how}</a>
+      <a class="btn primary" href="https://calhegasmorais.pt/pagamentos" rel="noopener">${pt ? "Donativo (operador)" : "Donate (operator)"}</a>
+      <a class="btn" href="/contributors${enQ}">${pt ? "Contribuidores" : "Contributors"}</a>
+      <a class="btn" href="/api/v1/repositories">${pt ? "API · repos" : "API · repos"}</a>
     </div>
     <div class="grid">
-      <section><div class="stat muted">—</div><div class="muted">EUR pooled (Phase 3)</div></section>
-      <section><div class="stat" id="c-count">…</div><div class="muted">${pt ? "contribuidores (descobertos)" : "contributors (discovered)"}</div></section>
-      <section><div class="stat">${REPOS.length}</div><div class="muted">${pt ? "repositórios no âmbito" : "repositories in scope"}</div></section>
+      <div class="stat-box"><div class="stat muted">—</div><div class="stat-label">${pt ? "EUR agrupado (fase 3)" : "EUR pooled (phase 3)"}</div></div>
+      <div class="stat-box"><div class="stat" id="c-count">—</div><div class="stat-label">${pt ? "contribuidores" : "contributors"}</div></div>
+      <div class="stat-box"><div class="stat">${REPOS.length}</div><div class="stat-label">${pt ? "repositórios" : "repositories"}</div></div>
     </div>
-    <section id="payout">
-      <h2>${t.how}</h2>
+    <div class="section">
+      <h2>${pt ? "Como funciona o desembolso" : "How payout works"}</h2>
       <ol class="steps">
-        <li><strong>${pt ? "Operador (já activo)" : "Operator (already live)"}</strong> —
-          ${pt ? "widget" : "widget"} <a href="https://calhegasmorais.pt/pagamentos">/pagamentos</a>
-          ${pt ? "(AMCM ENI · instrução bancária com referência única)." : "(AMCM ENI · bank instruction with unique reference)."}</li>
-        <li><strong>${pt ? "Outros contribuidores" : "Other contributors"}</strong> —
-          ${pt ? "login GitHub → registar conta de desembolso (dados opacos no Fundo)." : "GitHub login → register payout account (opaque ids only in the Fund)."}</li>
-        <li><strong>${pt ? "Cartão pré-pago" : "Prepaid card"}</strong> —
-          ${pt ? "o grantor escolhe um fornecedor integrado, compra na página do fornecedor; o cartão é enviado ao email público de domínio registado no GitHub do contribuidor." : "grantor picks an integrated provider, buys on the provider page; the card is sent to the contributor’s GitHub-registered public-domain email."}</li>
+        <li><strong>${pt ? "Operador" : "Operator"}</strong> — <a href="https://calhegasmorais.pt/pagamentos">/pagamentos</a> (AMCM ENI · instrução bancária com referência única).</li>
+        <li><strong>${pt ? "Outros contribuidores" : "Other contributors"}</strong> — ${pt ? "login GitHub → registar conta (ids opacos no Fundo)." : "GitHub login → register account (opaque ids in the Fund)."}</li>
+        <li><strong>${pt ? "Cartão pré-pago" : "Prepaid card"}</strong> — ${pt ? "o grantor escolhe um fornecedor do catálogo; envio para o email público registado no GitHub." : "grantor picks a catalog provider; delivery to the GitHub-registered public-domain email."}</li>
       </ol>
-      <p class="muted">${t.principle}</p>
-    </section>
-    <section id="operator-pay">
-      <h2>${pt ? "Donativo ao projecto (operador)" : "Donate to the project (operator)"}</h2>
-      <p class="muted">${OPERATOR_PAYOUT.widget_note}</p>
-      <p>
-        <a class="btn primary" href="${OPERATOR_PAYOUT.widget_url}" target="_blank" rel="noopener">${pt ? "Abrir /pagamentos" : "Open /pagamentos"}</a>
-        <a class="btn ghost" href="/contributors/amcmorais${pt ? "" : "?lang=en"}">@amcmorais</a>
-      </p>
-      <iframe class="pay-widget" title="AMCM ENI Pagamentos" src="${OPERATOR_PAYOUT.widget_url}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-      <p class="mono muted" style="margin-top:.75rem">${pt ? "Se o iframe for bloqueado pelo browser, use o botão acima." : "If the iframe is blocked by the browser, use the button above."}</p>
-    </section>
-    <section>
-      <h2>${pt ? "API" : "API"}</h2>
-      <p class="mono">
+      <p class="note">${
+        pt
+          ? "O Fundo não substitui o GitHub. Consome evidência pública, agrega estatísticas e encaminha pagamentos — sem STRATA, sem GDA e sem liquidação on-chain na V0."
+          : "The Fund does not replace GitHub. It consumes public evidence, aggregates statistics, and routes payments — no STRATA, no GDA, no on-chain settlement in V0."
+      }</p>
+    </div>
+    <div class="section">
+      <h2>${pt ? "Repositórios no âmbito" : "In-scope repositories"}</h2>
+      <table>
+        <thead><tr><th>Repository</th><th>Role</th></tr></thead>
+        <tbody>
+          ${REPOS.map(
+            (r) =>
+              `<tr><td><a href="https://github.com/${r.owner}/${r.name}" rel="noopener">${esc(r.name)}</a></td><td class="muted">${esc(r.role)}</td></tr>`
+          ).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="section">
+      <h2>API</h2>
+      <p class="mono muted">
         GET /api/v1/health<br/>
         GET /api/v1/contributors<br/>
         GET /api/v1/contributors/:login<br/>
         GET /api/v1/payout-methods<br/>
         GET /api/v1/prepaid-providers<br/>
-        GET /api/v1/methodology/current<br/>
-        POST /api/github/webhook
+        GET /api/v1/methodology/current
       </p>
-    </section>
+    </div>
     <script>
-      fetch('/api/v1/contributors').then(r=>r.json()).then(d=>{
-        const el=document.getElementById('c-count');
-        if(el) el.textContent = (d.contributors && d.contributors.length) || 0;
-      }).catch(()=>{});
+      fetch('/api/v1/contributors').then(function(r){return r.json()}).then(function(d){
+        var el=document.getElementById('c-count');
+        if(el) el.textContent = (d.contributors && d.contributors.length) ? d.contributors.length : '0';
+      }).catch(function(){});
     </script>
   `;
-  return shell({ lang, path, title: t.title, body });
+  return shell({ lang, path, title: "StrataMesh Impact Fund", active: "home", body });
 }
 
 function contributorsPage(lang, list) {
   const pt = lang === "pt";
   const path = pt ? "/contributors" : "/contributors?lang=en";
+  const enQ = pt ? "" : "?lang=en";
   const rows = (list || [])
     .map((c) => {
       const pay = c.payout || {};
-      const status =
-        pay.status === "active"
-          ? `<span class="pill ok">${pay.method || "active"}</span>`
-          : pay.status === "claimable"
-            ? `<span class="pill warn">${pt ? "por reclamar" : "unclaimed"}</span>`
-            : `<span class="pill muted">${pay.status || "—"}</span>`;
+      let status = `<span class="pill">—</span>`;
+      if (pay.status === "active") status = `<span class="pill ok">${esc(pay.method || "active")}</span>`;
+      else if (pay.status === "claimable") status = `<span class="pill warn">${pt ? "por reclamar" : "unclaimed"}</span>`;
       const link =
         pay.method === "eni_pagamentos"
-          ? `<a href="${pay.widget_url || "https://calhegasmorais.pt/pagamentos"}">/pagamentos</a>`
-          : pay.method
-            ? `<span class="mono">${pay.method}</span>`
-            : `<a href="/claim?login=${encodeURIComponent(c.github_login)}">${pt ? "Reclamar / registar" : "Claim / register"}</a>`;
+          ? `<a href="${esc(pay.widget_url || "https://calhegasmorais.pt/pagamentos")}">/pagamentos</a>`
+          : `<a href="/claim?${pt ? "" : "lang=en&"}login=${encodeURIComponent(c.github_login)}">${pt ? "Reclamar" : "Claim"}</a>`;
+      const hint =
+        c.contributions_hint && c.contributions_hint > 0
+          ? String(c.contributions_hint)
+          : "—";
       return `<tr>
-        <td>${c.avatar_url ? `<img class="avatar" src="${c.avatar_url}" alt=""/>` : ""}
-          <a href="/contributors/${c.github_login}${pt ? "" : "?lang=en"}">@${c.github_login}</a></td>
-        <td>${c.contributions_hint ?? "—"}</td>
-        <td>${(c.repositories || []).join(", ") || "—"}</td>
-        <td>${status}<br/>${link}</td>
+        <td>${c.avatar_url ? `<img class="avatar" src="${esc(c.avatar_url)}" alt="" width="28" height="28"/>` : ""}
+          <a href="/contributors/${esc(c.github_login)}${enQ}">@${esc(c.github_login)}</a></td>
+        <td class="mono">${hint}</td>
+        <td class="muted">${esc((c.repositories || []).join(", ") || "—")}</td>
+        <td>${status}<div style="margin-top:.35rem">${link}</div></td>
       </tr>`;
     })
-    .join("\n");
+    .join("");
 
   const body = `
-    <p class="pill ok">${pt ? "Contas de desembolso" : "Payout accounts"}</p>
+    <p class="kicker">${pt ? "Contas de desembolso" : "Payout accounts"}</p>
     <h1>${pt ? "Contribuidores" : "Contributors"}</h1>
     <p class="lead">${
       pt
-        ? "Lista descoberta a partir do GitHub (organização StrataMesh-Laboratory). Cada linha liga à conta de desembolso quando existir."
+        ? "Descoberta a partir do GitHub (organização StrataMesh-Laboratory). Cada linha liga à conta de desembolso quando existir."
         : "Discovered from GitHub (StrataMesh-Laboratory org). Each row links to a payout account when one exists."
     }</p>
-    <section>
+    <div class="card" style="padding:0;overflow:auto">
       <table>
         <thead>
           <tr>
             <th>${pt ? "Contribuidor" : "Contributor"}</th>
-            <th>${pt ? "Actividade (hint)" : "Activity (hint)"}</th>
+            <th>${pt ? "Actividade" : "Activity"}</th>
             <th>${pt ? "Repositórios" : "Repos"}</th>
             <th>${pt ? "Desembolso" : "Payout"}</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="4" class="muted">${pt ? "Sem dados GitHub neste momento." : "No GitHub data right now."}</td></tr>`}
+          ${
+            rows ||
+            `<tr><td colspan="4" class="muted">${pt ? "Sem dados GitHub neste momento (rate limit ou rede)." : "No GitHub data right now (rate limit or network)."}</td></tr>`
+          }
         </tbody>
       </table>
-    </section>
-    <section>
-      <h2>${pt ? "Registar conta" : "Register account"}</h2>
-      <p>${
-        pt
-          ? "Faça login com GitHub (gateway OAuth). Confirme o email de domínio público. Depois registe o método de desembolso ou aguarde um cartão pré-pago escolhido pelo grantor."
-          : "Sign in with GitHub (OAuth gateway). Confirm your public-domain email. Then register a payout method, or wait for a grantor-chosen prepaid card."
-      }</p>
-      <a class="btn primary" href="/claim">${pt ? "Reclamar perfil (GitHub)" : "Claim profile (GitHub)"}</a>
-    </section>
+    </div>
+    <p class="note">${
+      pt
+        ? "«Actividade» é um hint em tempo real da API pública do GitHub — não uma época congelada nem um score de impacto."
+        : "“Activity” is a live GitHub public API hint — not a frozen epoch or an impact score."
+    }</p>
+    <div class="actions">
+      <a class="btn primary" href="/claim${enQ}">${pt ? "Reclamar perfil" : "Claim profile"}</a>
+      <a class="btn" href="/api/v1/contributors">JSON</a>
+    </div>
   `;
   return shell({
     lang,
     path,
     title: pt ? "Contribuidores · Impact Fund" : "Contributors · Impact Fund",
+    active: "contributors",
     body,
   });
 }
@@ -367,154 +365,124 @@ function contributorDetailPage(lang, profile) {
   const pt = lang === "pt";
   const login = profile.github_login;
   const path = `/contributors/${login}`;
+  const enQ = pt ? "" : "?lang=en";
   const pay = profile.payout || {};
   let payBlock = "";
   if (pay.method === "eni_pagamentos") {
     payBlock = `
-      <section id="pay">
+      <div class="section">
         <h2>${pt ? "Conta de desembolso (operador)" : "Payout account (operator)"}</h2>
-        <p>${pay.widget_note || ""}</p>
-        <p><a class="btn primary" href="${pay.widget_url}" target="_blank" rel="noopener">/pagamentos</a></p>
-        <iframe class="pay-widget" title="AMCM ENI Pagamentos" src="${pay.widget_url}" loading="lazy"></iframe>
-      </section>`;
+        <p class="muted">${esc(pay.widget_note || "")}</p>
+        <div class="actions">
+          <a class="btn primary" href="${esc(pay.widget_url)}" rel="noopener">${pt ? "Abrir /pagamentos" : "Open /pagamentos"}</a>
+          <a class="btn" href="mailto:${esc(pay.contact || "geral@eni.calhegasmorais.pt")}">${esc(pay.contact || "")}</a>
+        </div>
+        <p class="note">${
+          pt
+            ? "O portal de pagamentos não pode ser embutido em iframe (X-Frame-Options). Use o botão para abrir a página oficial."
+            : "The payment portal cannot be embedded in an iframe (X-Frame-Options). Use the button to open the official page."
+        }</p>
+      </div>`;
   } else if (pay.status === "active") {
     payBlock = `
-      <section id="pay">
+      <div class="section">
         <h2>${pt ? "Conta de desembolso" : "Payout account"}</h2>
-        <p class="mono">${pay.method} · ${pay.status}</p>
+        <p class="mono">${esc(pay.method)} · ${esc(pay.status)}</p>
         <p class="muted">${pt ? "Identificadores bancários completos não são publicados." : "Full bank identifiers are not published."}</p>
-      </section>`;
+      </div>`;
   } else {
     payBlock = `
-      <section id="pay">
+      <div class="section">
         <h2>${pt ? "Ainda sem conta ligada" : "No payout account linked yet"}</h2>
         <ol class="steps">
-          <li><a href="/claim?login=${encodeURIComponent(login)}">${pt ? "Reclamar via GitHub OAuth" : "Claim via GitHub OAuth"}</a></li>
-          <li>${pt ? "Registar dados de conta (opacos no Fundo) ou" : "Register account details (opaque in the Fund) or"}</li>
+          <li><a href="/claim?${pt ? "" : "lang=en&"}login=${encodeURIComponent(login)}">${pt ? "Reclamar via GitHub OAuth" : "Claim via GitHub OAuth"}</a></li>
+          <li>${pt ? "Registar dados de conta (opacos no Fundo), ou" : "Register account details (opaque in the Fund), or"}</li>
           <li>${pt ? "receber cartão pré-pago no email GitHub de domínio público (escolha do grantor)." : "receive a prepaid card at the GitHub public-domain email (grantor’s choice)."}</li>
         </ol>
-      </section>`;
+      </div>`;
   }
 
+  const hint =
+    profile.contributions_hint && profile.contributions_hint > 0
+      ? String(profile.contributions_hint)
+      : "—";
+
   const body = `
-    <p class="pill">${profile.claimed ? (pt ? "perfil reclamado" : "claimed") : (pt ? "descoberta GitHub" : "GitHub discovery")}</p>
+    <p class="kicker">${profile.claimed ? (pt ? "perfil reclamado" : "claimed") : (pt ? "descoberta GitHub" : "GitHub discovery")}</p>
     <h1>
-      ${profile.avatar_url ? `<img class="avatar" src="${profile.avatar_url}" alt=""/>` : ""}
-      @${login}
+      ${profile.avatar_url ? `<img class="avatar" src="${esc(profile.avatar_url)}" alt="" width="28" height="28"/>` : ""}
+      @${esc(login)}
     </h1>
     <p class="muted">
-      <a href="${profile.profile_url || "https://github.com/" + login}" rel="noopener">GitHub</a>
-      ${profile.display_name ? " · " + profile.display_name : ""}
+      <a href="${esc(profile.profile_url || "https://github.com/" + login)}" rel="noopener">GitHub</a>
+      ${profile.display_name ? " · " + esc(profile.display_name) : ""}
     </p>
-    <section>
-      <h2>${pt ? "Estatísticas (hint em tempo real)" : "Statistics (live hint)"}</h2>
-      <p>${pt ? "Actividade agregada (não é época congelada):" : "Aggregated activity (not a frozen epoch):"}
-        <strong>${profile.contributions_hint ?? "—"}</strong></p>
-      <p class="muted">${pt ? "Repositórios:" : "Repositories:"} ${(profile.repositories || []).join(", ") || "—"}</p>
-    </section>
+    <div class="grid">
+      <div class="stat-box"><div class="stat">${hint}</div><div class="stat-label">${pt ? "actividade (hint)" : "activity (hint)"}</div></div>
+      <div class="stat-box"><div class="stat">${(profile.repositories || []).length}</div><div class="stat-label">${pt ? "repositórios" : "repositories"}</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${esc((pay.method || pay.status || "—").toString())}</div><div class="stat-label">payout</div></div>
+    </div>
+    <p class="muted">${pt ? "Repositórios:" : "Repositories:"} ${esc((profile.repositories || []).join(", ") || "—")}</p>
     ${payBlock}
   `;
   return shell({
     lang,
     path,
     title: `@${login} · Impact Fund`,
+    active: "contributors",
     body,
   });
 }
 
 function claimPage(lang) {
   const pt = lang === "pt";
+  const path = pt ? "/claim" : "/claim?lang=en";
   const body = `
-    <p class="pill warn">${pt ? "Gateway GitHub (fase 2)" : "GitHub gateway (phase 2)"}</p>
-    <h1>${pt ? "Reclamar perfil e registar desembolso" : "Claim profile and register payout"}</h1>
+    <p class="kicker">${pt ? "Gateway GitHub · fase 2" : "GitHub gateway · phase 2"}</p>
+    <h1>${pt ? "Reclamar perfil" : "Claim profile"}</h1>
     <p class="lead">${
       pt
         ? "O login GitHub identifica o contribuidor pelo user id estável. O email de contacto deve ser confirmado explicitamente (preferência: domínio público registado no GitHub)."
         : "GitHub login identifies the contributor by stable user id. Contact email must be confirmed explicitly (prefer: public-domain email registered on GitHub)."
     }</p>
-    <section>
+    <div class="section">
       <h2>${pt ? "Fluxo" : "Flow"}</h2>
       <ol class="steps">
-        <li>OAuth GitHub (scopes: read:user, user:email)</li>
+        <li>OAuth GitHub (<code>read:user</code>, <code>user:email</code>)</li>
         <li>${pt ? "Confirmar email para comunicações e envio de cartão" : "Confirm email for communications and card delivery"}</li>
-        <li>${pt ? "Escolher método:" : "Choose method:"}
-          <ul>
-            <li><code>registered_account</code> — ${pt ? "registo de conta junto de um prestador (id opaco)" : "account registration with a provider (opaque id)"}</li>
-            <li><code>prepaid_card</code> — ${pt ? "aguardar escolha do grantor no catálogo integrado" : "await grantor choice from the integrated catalog"}</li>
+        <li>${pt ? "Escolher método" : "Choose method"}:
+          <ul class="plain">
+            <li><code>registered_account</code> — ${pt ? "registo junto de um prestador (id opaco)" : "provider registration (opaque id)"}</li>
+            <li><code>prepaid_card</code> — ${pt ? "aguardar escolha do grantor no catálogo" : "await grantor choice from the catalog"}</li>
           </ul>
         </li>
       </ol>
-      <p class="muted">${
+      <p class="note">${
         pt
-          ? "O endpoint OAuth completo activa-se com GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET no worker. Até lá, use a lista de contribuidores e o widget do operador."
-          : "Full OAuth activates when GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET are bound on the worker. Until then, use the contributor list and the operator widget."
+          ? "OAuth completo activa-se com GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET no worker. Até lá, use a lista de contribuidores e o portal /pagamentos do operador."
+          : "Full OAuth activates when GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET are bound on the worker. Until then, use the contributor list and the operator /pagamentos portal."
       }</p>
-      <a class="btn ghost" href="/api/v1/payout-methods">${pt ? "Ver métodos (API)" : "View methods (API)"}</a>
-      <a class="btn ghost" href="/api/v1/prepaid-providers">${pt ? "Catálogo pré-pago" : "Prepaid catalog"}</a>
-    </section>
+      <div class="actions">
+        <a class="btn" href="/api/v1/payout-methods">${pt ? "Métodos (API)" : "Methods (API)"}</a>
+        <a class="btn" href="/api/v1/prepaid-providers">${pt ? "Catálogo pré-pago" : "Prepaid catalog"}</a>
+        <a class="btn primary" href="https://calhegasmorais.pt/pagamentos" rel="noopener">/pagamentos</a>
+      </div>
+    </div>
   `;
   return shell({
     lang,
-    path: "/claim",
+    path,
     title: pt ? "Reclamar · Impact Fund" : "Claim · Impact Fund",
+    active: "claim",
     body,
   });
 }
 
-async function discoverContributors(env) {
-  const loginSeen = new Map();
-  for (const r of REPOS) {
-    try {
-      const api = `https://api.github.com/repos/${r.owner}/${r.name}/contributors?per_page=100`;
-      const res = await fetch(api, {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "User-Agent": "stratamesh-impact-fund",
-          ...(env.GITHUB_TOKEN ? { Authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}),
-        },
-      });
-      if (!res.ok) continue;
-      const list = await res.json();
-      if (!Array.isArray(list)) continue;
-      for (const c of list) {
-        if (!c || c.type === "Bot") continue;
-        const prev = loginSeen.get(c.id) || {
-          github_user_id: c.id,
-          github_login: c.login,
-          avatar_url: c.avatar_url,
-          profile_url: c.html_url,
-          contributions_hint: 0,
-          repositories: [],
-          claimed: false,
-        };
-        prev.contributions_hint += c.contributions || 0;
-        if (!prev.repositories.includes(r.name)) prev.repositories.push(r.name);
-        loginSeen.set(c.id, prev);
-      }
-    } catch (_) {}
-  }
-
-  // Always ensure operator is present
-  if (![...loginSeen.values()].some((c) => c.github_login === OPERATOR_PAYOUT.github_login)) {
-    loginSeen.set(OPERATOR_PAYOUT.github_user_id, {
-      github_user_id: OPERATOR_PAYOUT.github_user_id,
-      github_login: OPERATOR_PAYOUT.github_login,
-      avatar_url: "https://avatars.githubusercontent.com/u/121771985?v=4",
-      profile_url: "https://github.com/amcmorais",
-      display_name: OPERATOR_PAYOUT.display_name,
-      contributions_hint: 0,
-      repositories: REPOS.map((r) => r.name),
-      claimed: true,
-    });
-  }
-
-  return [...loginSeen.values()]
-    .map((c) => attachPayout(c))
-    .sort((a, b) => (b.contributions_hint || 0) - (a.contributions_hint || 0));
-}
-
 function attachPayout(c) {
-  if (c.github_login === OPERATOR_PAYOUT.github_login || c.github_user_id === OPERATOR_PAYOUT.github_user_id) {
+  if (
+    c.github_login === OPERATOR_PAYOUT.github_login ||
+    c.github_user_id === OPERATOR_PAYOUT.github_user_id
+  ) {
     return {
       ...c,
       display_name: c.display_name || OPERATOR_PAYOUT.display_name,
@@ -539,12 +507,77 @@ function attachPayout(c) {
   };
 }
 
+async function discoverContributors(env) {
+  const loginSeen = new Map();
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "stratamesh-impact-fund",
+  };
+  if (env && env.GITHUB_TOKEN) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+
+  for (const r of REPOS) {
+    try {
+      const api = `https://api.github.com/repos/${r.owner}/${r.name}/contributors?per_page=100&anon=false`;
+      const res = await fetch(api, { headers });
+      if (res.status === 204 || res.status === 202) continue;
+      if (!res.ok) continue;
+      const list = await res.json();
+      if (!Array.isArray(list)) continue;
+      for (const c of list) {
+        if (!c || c.type === "Bot") continue;
+        const prev = loginSeen.get(c.id) || {
+          github_user_id: c.id,
+          github_login: c.login,
+          avatar_url: c.avatar_url,
+          profile_url: c.html_url,
+          contributions_hint: 0,
+          repositories: [],
+          claimed: false,
+        };
+        prev.contributions_hint += Number(c.contributions) || 0;
+        if (!prev.repositories.includes(r.name)) prev.repositories.push(r.name);
+        loginSeen.set(c.id, prev);
+      }
+    } catch (_) {
+      /* network / rate limit — continue */
+    }
+  }
+
+  // Ensure operator always present
+  const hasOp = [...loginSeen.values()].some(
+    (c) => c.github_login === OPERATOR_PAYOUT.github_login
+  );
+  if (!hasOp) {
+    loginSeen.set(OPERATOR_PAYOUT.github_user_id, {
+      github_user_id: OPERATOR_PAYOUT.github_user_id,
+      github_login: OPERATOR_PAYOUT.github_login,
+      avatar_url: "https://avatars.githubusercontent.com/u/121771985?v=4",
+      profile_url: "https://github.com/amcmorais",
+      display_name: OPERATOR_PAYOUT.display_name,
+      contributions_hint: 0,
+      repositories: REPOS.map((r) => r.name),
+      claimed: true,
+    });
+  }
+
+  return [...loginSeen.values()]
+    .map(attachPayout)
+    .sort((a, b) => (b.contributions_hint || 0) - (a.contributions_hint || 0));
+}
+
+function resolveLang(url, path) {
+  const q = url.searchParams.get("lang");
+  if (q === "en") return "en";
+  if (q === "pt") return "pt";
+  if (path === "/en" || path.startsWith("/en/")) return "en";
+  return "pt";
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     let path = url.pathname.replace(/\/+$/, "") || "/";
-    const langQ = url.searchParams.get("lang");
-    const lang = langQ === "en" || path === "/en" || path.startsWith("/en/") ? "en" : "pt";
+    const lang = resolveLang(url, path);
 
     if (request.method === "OPTIONS") {
       return new Response(null, {
@@ -595,7 +628,7 @@ export default {
             id: "eni_pagamentos",
             who: "operator",
             description:
-              "AMCM ENI /pagamentos widget — unique bank-transfer instruction via payment-intent (purpose=donation).",
+              "AMCM ENI /pagamentos — unique bank-transfer instruction via payment-intent (purpose=donation). Not embeddable (X-Frame-Options).",
             widget_url: OPERATOR_PAYOUT.widget_url,
             stores_iban_in_fund: false,
           },
@@ -603,14 +636,14 @@ export default {
             id: "registered_account",
             who: "contributor_after_github_oauth",
             description:
-              "Contributor claims profile via GitHub login API gateway and registers payout account info with a provider; Fund stores opaque recipient id only.",
+              "Claim via GitHub OAuth; register payout with a provider; Fund stores opaque recipient id only.",
             stores_iban_in_fund: false,
           },
           {
             id: "prepaid_card",
             who: "grantor_choice",
             description:
-              "Grantor selects an API-integrated prepaid option, is redirected to the provider purchase page; card is sent to the contributor’s GitHub-registered public-domain email.",
+              "Grantor selects an integrated prepaid option, redirects to provider purchase; card sent to GitHub-registered public-domain email.",
             delivery: "github_public_domain_email",
             providers_endpoint: "/api/v1/prepaid-providers",
           },
@@ -652,12 +685,10 @@ export default {
     }
 
     if (path === "/api/github/webhook" && request.method === "POST") {
-      const delivery = request.headers.get("X-GitHub-Delivery") || null;
-      const event = request.headers.get("X-GitHub-Event") || "unknown";
       return json({
         accepted: true,
-        delivery,
-        event,
+        delivery: request.headers.get("X-GitHub-Delivery") || null,
+        event: request.headers.get("X-GitHub-Event") || "unknown",
         note: "Webhook accepted for async processing. No scoring on the request path.",
       });
     }
@@ -672,7 +703,7 @@ export default {
     }
 
     if (path.startsWith("/contributors/")) {
-      const key = decodeURIComponent(path.split("/").pop());
+      const key = decodeURIComponent(path.split("/").pop() || "");
       const list = await discoverContributors(env);
       let found = list.find((c) => c.github_login.toLowerCase() === key.toLowerCase());
       if (!found && key.toLowerCase() === "amcmorais") {
@@ -687,7 +718,18 @@ export default {
           claimed: true,
         });
       }
-      if (!found) return json({ error: "not_found" }, 404);
+      if (!found) {
+        return html(
+          shell({
+            lang,
+            path: `/contributors/${key}`,
+            title: "Not found · Impact Fund",
+            active: "contributors",
+            body: `<h1>404</h1><p class="muted">@${esc(key)}</p><a class="btn" href="/contributors">${lang === "pt" ? "Voltar" : "Back"}</a>`,
+          }),
+          404
+        );
+      }
       return html(contributorDetailPage(lang, found));
     }
 
