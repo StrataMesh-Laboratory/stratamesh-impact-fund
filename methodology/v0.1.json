@@ -1,0 +1,17 @@
+{
+  "version": "0.1",
+  "title": "Descriptive statistics emphasis (not scientific value)",
+  "currency": "EUR",
+  "notes": "Weights guide human allocation discussion in early epochs. They are not a proven measure of engineering value.",
+  "metrics": {
+    "merged_pr": 1.0,
+    "review": 0.25,
+    "issue_closed": 0.5,
+    "commit": 0.1,
+    "release_participation": 0.75
+  },
+  "caps": {
+    "max_share_per_contributor": 0.35
+  },
+  "requires_human_approval": true
+}
