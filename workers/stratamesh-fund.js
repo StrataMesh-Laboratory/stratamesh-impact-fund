@@ -5,7 +5,7 @@
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.4.0-sponsors-challenges";
+const VERSION = "0.4.1-sponsors-live";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -30,7 +30,11 @@ const OPERATOR = {
 
 const SPONSORS_LOGIN = "amcmorais";
 const SPONSORS_URL = "https://github.com/sponsors/amcmorais";
-const SPONSORS_SETUP = "https://github.com/sponsors";
+const SPONSORS_BUTTON = "https://github.com/sponsors/amcmorais/button";
+const SPONSORS_CARD = "https://github.com/sponsors/amcmorais/card";
+const SPONSORS_SETUP = "https://github.com/sponsors/accounts";
+const SPONSORS_ORG = "StrataMesh-Laboratory";
+const SPONSORS_ORG_URL = "https://github.com/sponsors/StrataMesh-Laboratory";
 const CHALLENGE_REPOS = [
   { owner: ORG, name: "stratamesh-impact-fund" },
   { owner: ORG, name: "stratamesh-core" },
@@ -69,7 +73,7 @@ const METHODOLOGY = {
 
 const SECURITY = {
   "Content-Security-Policy":
-    "default-src 'self'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'",
+    "default-src 'self'; img-src 'self' data: https://avatars.githubusercontent.com https://github.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-src https://github.com; frame-ancestors 'none'",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",
@@ -145,6 +149,8 @@ th{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.08em;t
 .steps{margin:.4rem 0 0;padding-left:1.15rem;color:var(--muted)}.steps li{margin:.35rem 0}
 footer{margin-top:2.75rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
 footer .mono{font-size:.65rem;margin-top:.4rem}
+.sponsor-embed{margin:1rem 0;line-height:0}
+.sponsor-embed iframe{border:0;border-radius:6px;max-width:100%}
 input,select{width:100%;max-width:28rem;background:var(--card);border:1px solid var(--line2);color:var(--fg);padding:.55rem .7rem;border-radius:3px;font:inherit;margin:.35rem 0 .75rem}
 label{font-family:'IBM Plex Mono',monospace;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block}
 .err{color:#c47a6a;font-size:.88rem}.okmsg{color:var(--ok);font-size:.88rem}
@@ -259,27 +265,53 @@ async function ghGraphQL(env, query, variables) {
 }
 
 async function sponsorsStatus(env) {
-  const q = `query($login:String!){
+  const q = `query($login:String!,$org:String!){
     user(login:$login){
       login
-      sponsorsListing { url shortDescription }
+      sponsorsListing { url shortDescription isPublic }
       sponsorshipsAsMaintainer(first:1){ totalCount }
     }
+    organization(login:$org){
+      login
+      sponsorsListing { url shortDescription isPublic }
+    }
   }`;
-  const res = await ghGraphQL(env, q, { login: SPONSORS_LOGIN });
-  const listing = res.ok && res.json && res.json.data && res.json.data.user
-    ? res.json.data.user.sponsorsListing
-    : null;
-  const active = !!listing;
+  const res = await ghGraphQL(env, q, { login: SPONSORS_LOGIN, org: SPONSORS_ORG });
+  const user = res.ok && res.json && res.json.data ? res.json.data.user : null;
+  const org = res.ok && res.json && res.json.data ? res.json.data.organization : null;
+  const userListing = user && user.sponsorsListing ? user.sponsorsListing : null;
+  const orgListing = org && org.sponsorsListing ? org.sponsorsListing : null;
+  const userActive = !!userListing;
+  const orgActive = !!orgListing;
   return {
-    login: SPONSORS_LOGIN,
-    active,
-    url: active && listing.url ? listing.url : SPONSORS_URL,
-    setup_url: SPONSORS_SETUP,
-    listing: listing || null,
-    note: active
-      ? "GitHub Sponsors listing is active — preferred rail for recurring/one-time grants."
-      : "Sponsors listing not active yet — grantors use ENI /pagamentos or complete github.com/sponsors onboarding. FUNDING.yml already points at this login.",
+    user: {
+      login: SPONSORS_LOGIN,
+      active: userActive,
+      url: userActive && userListing.url ? userListing.url : SPONSORS_URL,
+      button: SPONSORS_BUTTON,
+      card: SPONSORS_CARD,
+      isPublic: userListing ? userListing.isPublic : null,
+      shortDescription: userListing ? userListing.shortDescription : null,
+    },
+    organization: {
+      login: SPONSORS_ORG,
+      active: orgActive,
+      url: orgActive && orgListing.url ? orgListing.url : SPONSORS_ORG_URL,
+      setup_url: SPONSORS_SETUP,
+      isPublic: orgListing ? orgListing.isPublic : null,
+      note: orgActive
+        ? "Organisation Sponsors listing is active."
+        : "Org Sponsors not active yet — enable under github.com/sponsors/accounts for StrataMesh-Laboratory (requires org billing profile). Until then grantors use @amcmorais Sponsors or ENI /pagamentos.",
+    },
+    // preferred public rail: personal listing is live today
+    active: userActive || orgActive,
+    preferred_url: orgActive ? (orgListing.url || SPONSORS_ORG_URL) : SPONSORS_URL,
+    preferred_login: orgActive ? SPONSORS_ORG : SPONSORS_LOGIN,
+    note: userActive
+      ? (orgActive
+          ? "Sponsors active for @amcmorais and StrataMesh-Laboratory."
+          : "Sponsors active for @amcmorais (contributor). Organisation listing still pending — enable at github.com/sponsors/accounts.")
+      : "No active Sponsors listing — use ENI /pagamentos.",
   };
 }
 
@@ -479,7 +511,27 @@ function resolveLang(url, path) {
   return "pt";
 }
 
-function homePage(lang, agg) {
+
+function sponsorsEmbedHtml(sp) {
+  const u = (sp && sp.user) || {};
+  const o = (sp && sp.organization) || {};
+  let html = "";
+  if (u.active) {
+    html += '<div class="sponsor-embed">' +
+      '<iframe src="' + esc(u.button || SPONSORS_BUTTON) + '" title="Sponsor ' + esc(u.login) + '" height="32" width="114" style="border:0;border-radius:6px;" loading="lazy"></iframe></div>';
+    html += '<div class="sponsor-embed">' +
+      '<iframe src="' + esc(u.card || SPONSORS_CARD) + '" title="Sponsor ' + esc(u.login) + '" height="225" width="600" style="border:0;max-width:100%;border-radius:6px;" loading="lazy"></iframe></div>';
+  }
+  html += '<p class="note mono">@' + esc(u.login || SPONSORS_LOGIN) + ' Sponsors: <strong>' + (u.active ? 'active' : 'pending') +
+    '</strong> · ' + esc(SPONSORS_ORG) + ': <strong>' + (o.active ? 'active' : 'pending') + '</strong>';
+  if (!o.active) {
+    html += ' · <a href="' + esc(o.setup_url || SPONSORS_SETUP) + '">enable org listing</a>';
+  }
+  html += '</p>';
+  return html;
+}
+
+function homePage(lang, agg, sp) {
   const pt = lang === "pt";
   const path = pt ? "/" : "/en";
   const enQ = pt ? "" : "?lang=en";
@@ -675,14 +727,16 @@ function challengesPage(lang, data, sponsors) {
     <div class="grid">
       <div class="stat-box"><div class="stat">${(data && data.open_count) != null ? data.open_count : list.length}</div><div class="stat-label">${pt ? "abertos" : "open"}</div></div>
       <div class="stat-box"><div class="stat">${(data && data.accepted_count) || 0}</div><div class="stat-label">${pt ? "aceites" : "accepted"}</div></div>
-      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${sp.active ? "active" : "pending"}</div><div class="stat-label">Sponsors</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${(sp.user && sp.user.active) ? "active" : "pending"}</div><div class="stat-label">@amcmorais</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${(sp.organization && sp.organization.active) ? "active" : "pending"}</div><div class="stat-label">org</div></div>
     </div>
     <div class="actions">
-      <a class="btn primary" href="${esc(sp.url || SPONSORS_URL)}" rel="noopener">GitHub Sponsors</a>
+      <a class="btn primary" href="${esc((sp && sp.preferred_url) || SPONSORS_URL)}" rel="noopener">GitHub Sponsors</a>
       <a class="btn" href="https://calhegasmorais.pt/pagamentos" rel="noopener">/pagamentos</a>
       <a class="btn" href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund/issues/new?template=funded-problem.yml" rel="noopener">${pt ? "Abrir desafio" : "Open challenge"}</a>
     </div>
-    <p class="note">${esc(sp.note || "")}</p>
+    ${sponsorsEmbedHtml(sp)}
+    <p class="note">${esc((sp && sp.note) || "")}</p>
     <div class="card" style="padding:0;overflow:auto">
       <table>
         <thead><tr>
@@ -823,7 +877,13 @@ export default {
         github_token_bound: !!env.GITHUB_TOKEN,
         kv_bound: !!env.FUND_KV,
         principle: "GitHub is the evidence layer; the Fund stratifies capital into open measurable challenges; Sponsors + ENI are the payment rails.",
-        sponsors: { active: sp.active, url: sp.url, login: sp.login },
+        sponsors: {
+          active: sp.active,
+          preferred_url: sp.preferred_url,
+          preferred_login: sp.preferred_login,
+          user: sp.user,
+          organization: sp.organization,
+        },
         challenges: { open: ch.open_count, accepted: ch.accepted_count, total_listed: ch.challenges.length },
         operator_payout: { login: OPERATOR.github_login, method: OPERATOR.method, widget_url: OPERATOR.widget_url },
       });
@@ -946,12 +1006,12 @@ export default {
 
     // pages
     if (path === "/" || path === "/pt") {
-      const data = await discoverContributors(env);
-      return html(homePage("pt", data.aggregate));
+      const [data, sp] = await Promise.all([discoverContributors(env), sponsorsStatus(env)]);
+      return html(homePage("pt", data.aggregate, sp));
     }
     if (path === "/en") {
-      const data = await discoverContributors(env);
-      return html(homePage("en", data.aggregate));
+      const [data, sp] = await Promise.all([discoverContributors(env), sponsorsStatus(env)]);
+      return html(homePage("en", data.aggregate, sp));
     }
     if (path === "/contributors") {
       const data = await discoverContributors(env);
