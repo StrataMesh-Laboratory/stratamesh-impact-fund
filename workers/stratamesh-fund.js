@@ -5,7 +5,7 @@
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.4.2-sponsors-pending-org";
+const VERSION = "0.4.3-sponsors-theme";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -149,8 +149,21 @@ th{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.08em;t
 .steps{margin:.4rem 0 0;padding-left:1.15rem;color:var(--muted)}.steps li{margin:.35rem 0}
 footer{margin-top:2.75rem;padding-top:1.25rem;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
 footer .mono{font-size:.65rem;margin-top:.4rem}
-.sponsor-embed{margin:1rem 0;line-height:0}
-.sponsor-embed iframe{border:0;border-radius:6px;max-width:100%}
+.sponsor-panel{margin:1.1rem 0 0;border:1px solid var(--line);border-radius:4px;background:var(--card);overflow:hidden}
+.sponsor-panel-inner{padding:1.1rem 1.15rem 1.15rem}
+.sponsor-panel .sp-kicker{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 .45rem}
+.sponsor-panel .sp-title{font-family:'Instrument Serif',Georgia,serif;font-size:1.35rem;font-weight:400;letter-spacing:-.01em;margin:0 0 .35rem;color:var(--fg)}
+.sponsor-panel .sp-desc{color:var(--muted);font-size:.92rem;margin:0 0 1rem;max-width:36rem}
+.sponsor-panel .sp-actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.sponsor-panel .sp-btn{display:inline-flex;align-items:center;gap:.4rem;font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;padding:.6rem 1rem;border:1px solid var(--accent);border-radius:3px;background:var(--accent);color:var(--bg);font-weight:500;text-decoration:none}
+.sponsor-panel .sp-btn:hover{filter:brightness(1.08);color:var(--bg)}
+.sponsor-panel .sp-btn.ghost{background:transparent;color:var(--fg);border-color:var(--line2)}
+.sponsor-panel .sp-btn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.sponsor-panel .sp-meta{margin:.9rem 0 0;padding-top:.75rem;border-top:1px solid var(--line);font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.04em;color:var(--muted);line-height:1.5}
+.sponsor-panel .sp-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:.35rem;vertical-align:middle}
+.sponsor-panel .sp-dot.live{background:var(--ok)}
+.sponsor-panel .sp-dot.pending{background:var(--warn)}
+.sponsor-panel .sp-dot.off{background:var(--line2)}
 input,select{width:100%;max-width:28rem;background:var(--card);border:1px solid var(--line2);color:var(--fg);padding:.55rem .7rem;border-radius:3px;font:inherit;margin:.35rem 0 .75rem}
 label{font-family:'IBM Plex Mono',monospace;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block}
 .err{color:#c47a6a;font-size:.88rem}.okmsg{color:var(--ok);font-size:.88rem}
@@ -525,27 +538,62 @@ function resolveLang(url, path) {
 function sponsorsEmbedHtml(sp) {
   const u = (sp && sp.user) || {};
   const o = (sp && sp.organization) || {};
-  let html = "";
-  if (u.active) {
-    html += '<div class="sponsor-embed">' +
-      '<iframe src="' + esc(u.button || SPONSORS_BUTTON) + '" title="Sponsor ' + esc(u.login) + '" height="32" width="114" style="border:0;border-radius:6px;" loading="lazy"></iframe></div>';
-    html += '<div class="sponsor-embed">' +
-      '<iframe src="' + esc(u.card || SPONSORS_CARD) + '" title="Sponsor ' + esc(u.login) + '" height="225" width="600" style="border:0;max-width:100%;border-radius:6px;" loading="lazy"></iframe></div>';
-  }
+  const url = (sp && sp.preferred_url) || (u.active ? u.url : null) || SPONSORS_URL;
   function statusLabel(x) {
-    if (x && x.active) return 'live';
-    if (x && x.pending) return 'pending approval';
-    return 'not submitted';
+    if (x && x.active) return "live";
+    if (x && x.pending) return "pending approval";
+    return "not submitted";
   }
-  html += '<p class="note mono">@' + esc(u.login || SPONSORS_LOGIN) + ' Sponsors: <strong>' + statusLabel(u) +
-    '</strong> · ' + esc(SPONSORS_ORG) + ': <strong>' + statusLabel(o) + '</strong>';
+  function dotClass(x) {
+    if (x && x.active) return "live";
+    if (x && x.pending) return "pending";
+    return "off";
+  }
+  const desc = u.active
+    ? "Support open contribution on StrataMesh Laboratory via GitHub Sponsors. Operator rail under AMCM ENI."
+    : "GitHub Sponsors not public yet — use ENI /pagamentos for EUR grants.";
+  let meta =
+    '<span class="sp-dot ' +
+    dotClass(u) +
+    '"></span>@' +
+    esc(u.login || SPONSORS_LOGIN) +
+    " · " +
+    statusLabel(u) +
+    "&nbsp;&nbsp;&nbsp;<span class=\"sp-dot " +
+    dotClass(o) +
+    '"></span>' +
+    esc(SPONSORS_ORG) +
+    " · " +
+    statusLabel(o);
   if (o && o.pending) {
-    html += ' · staff review (AMCM ENI umbrella, same payout profile as @amcmorais)';
-  } else if (!o || (!o.active && !o.pending)) {
-    html += ' · <a href="' + esc((o && o.setup_url) || SPONSORS_SETUP) + '">sponsors/accounts</a>';
+    meta += " · AMCM ENI umbrella (staff review)";
   }
-  html += '</p>';
-  return html;
+  return (
+    '<div class="sponsor-panel">' +
+    '<div class="sponsor-panel-inner">' +
+    '<p class="sp-kicker">GitHub Sponsors</p>' +
+    '<p class="sp-title">Fund the laboratory</p>' +
+    '<p class="sp-desc">' +
+    esc(desc) +
+    "</p>" +
+    '<div class="sp-actions">' +
+    '<a class="sp-btn" href="' +
+    esc(url) +
+    '" rel="noopener">Sponsor @' +
+    esc(u.login || SPONSORS_LOGIN) +
+    "</a>" +
+    '<a class="sp-btn ghost" href="https://calhegasmorais.pt/pagamentos" rel="noopener">ENI /pagamentos</a>' +
+    (o && o.active
+      ? '<a class="sp-btn ghost" href="' +
+        esc(o.url || SPONSORS_ORG_URL) +
+        '" rel="noopener">Sponsor org</a>'
+      : "") +
+    "</div>" +
+    '<p class="sp-meta">' +
+    meta +
+    "</p>" +
+    "</div></div>"
+  );
 }
 
 function homePage(lang, agg, sp) {
