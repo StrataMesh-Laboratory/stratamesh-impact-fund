@@ -55,3 +55,12 @@ Every public number should link back to GitHub source evidence.
 
 This is laboratory infrastructure for funding the people building StrataMesh.  
 Not an investment product. Not a token sale. Not mainnet economics.
+
+## Strategic contributor funnel
+
+The Fund is one incentive rail for people already expert in **P2P, edge, distributed compute, agents, IoT, simulation** — see the laboratory outreach map:
+
+- [COMMUNITY-OUTREACH-MAP.md](https://github.com/StrataMesh-Laboratory/stratamesh-core/blob/main/docs/COMMUNITY-OUTREACH-MAP.md)
+- Live challenges: https://fund.calhegasmorais.pt/challenges
+
+Prefer **problem-shaped** grants (objective metrics on Issues) over “pay random commits.”
