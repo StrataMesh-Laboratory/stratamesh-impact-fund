@@ -5,7 +5,7 @@
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.4.1-sponsors-live";
+const VERSION = "0.4.2-sponsors-pending-org";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -269,7 +269,6 @@ async function sponsorsStatus(env) {
     user(login:$login){
       login
       sponsorsListing { url shortDescription isPublic }
-      sponsorshipsAsMaintainer(first:1){ totalCount }
     }
     organization(login:$org){
       login
@@ -281,13 +280,17 @@ async function sponsorsStatus(env) {
   const org = res.ok && res.json && res.json.data ? res.json.data.organization : null;
   const userListing = user && user.sponsorsListing ? user.sponsorsListing : null;
   const orgListing = org && org.sponsorsListing ? org.sponsorsListing : null;
-  const userActive = !!userListing;
-  const orgActive = !!orgListing;
+  // Live to the public only when isPublic; submitted-but-not-approved => pending
+  const userLive = !!(userListing && userListing.isPublic);
+  const orgLive = !!(orgListing && orgListing.isPublic);
+  const orgPending = !!(orgListing && !orgListing.isPublic);
+  const userPending = !!(userListing && !userListing.isPublic);
   return {
     user: {
       login: SPONSORS_LOGIN,
-      active: userActive,
-      url: userActive && userListing.url ? userListing.url : SPONSORS_URL,
+      active: userLive,
+      pending: userPending,
+      url: userListing && userListing.url ? userListing.url : SPONSORS_URL,
       button: SPONSORS_BUTTON,
       card: SPONSORS_CARD,
       isPublic: userListing ? userListing.isPublic : null,
@@ -295,23 +298,30 @@ async function sponsorsStatus(env) {
     },
     organization: {
       login: SPONSORS_ORG,
-      active: orgActive,
-      url: orgActive && orgListing.url ? orgListing.url : SPONSORS_ORG_URL,
+      active: orgLive,
+      pending: orgPending,
+      url: orgListing && orgListing.url ? orgListing.url : SPONSORS_ORG_URL,
       setup_url: SPONSORS_SETUP,
       isPublic: orgListing ? orgListing.isPublic : null,
-      note: orgActive
-        ? "Organisation Sponsors listing is active."
-        : "Org Sponsors not active yet — enable under github.com/sponsors/accounts for StrataMesh-Laboratory (requires org billing profile). Until then grantors use @amcmorais Sponsors or ENI /pagamentos.",
+      shortDescription: orgListing ? orgListing.shortDescription : null,
+      legal_umbrella:
+        "StrataMesh Laboratory exists under AMCM ENI (same payout/tax profile as the operator contributor @amcmorais). Org Sponsors uses the ENI umbrella; awaiting GitHub staff approval to go public.",
+      note: orgLive
+        ? "Organisation Sponsors is public."
+        : orgPending
+          ? "Organisation profile submitted — pending GitHub staff approval (not public yet). Same AMCM ENI account data as @amcmorais. Use @amcmorais Sponsors or ENI /pagamentos until live."
+          : "Org Sponsors not submitted — enable at github.com/sponsors/accounts.",
     },
-    // preferred public rail: personal listing is live today
-    active: userActive || orgActive,
-    preferred_url: orgActive ? (orgListing.url || SPONSORS_ORG_URL) : SPONSORS_URL,
-    preferred_login: orgActive ? SPONSORS_ORG : SPONSORS_LOGIN,
-    note: userActive
-      ? (orgActive
-          ? "Sponsors active for @amcmorais and StrataMesh-Laboratory."
-          : "Sponsors active for @amcmorais (contributor). Organisation listing still pending — enable at github.com/sponsors/accounts.")
-      : "No active Sponsors listing — use ENI /pagamentos.",
+    active: userLive || orgLive,
+    preferred_url: orgLive ? (orgListing.url || SPONSORS_ORG_URL) : SPONSORS_URL,
+    preferred_login: orgLive ? SPONSORS_ORG : SPONSORS_LOGIN,
+    note: orgLive && userLive
+      ? "Sponsors public for @amcmorais and StrataMesh-Laboratory (AMCM ENI umbrella)."
+      : userLive && orgPending
+        ? "Sponsors public for @amcmorais. StrataMesh-Laboratory listing submitted — pending GitHub staff approval (isPublic:false). Legal/payout umbrella: AMCM ENI."
+        : userLive
+          ? "Sponsors public for @amcmorais (AMCM ENI operator). Org listing not public yet."
+          : "No public Sponsors listing — use ENI /pagamentos.",
   };
 }
 
@@ -522,10 +532,17 @@ function sponsorsEmbedHtml(sp) {
     html += '<div class="sponsor-embed">' +
       '<iframe src="' + esc(u.card || SPONSORS_CARD) + '" title="Sponsor ' + esc(u.login) + '" height="225" width="600" style="border:0;max-width:100%;border-radius:6px;" loading="lazy"></iframe></div>';
   }
-  html += '<p class="note mono">@' + esc(u.login || SPONSORS_LOGIN) + ' Sponsors: <strong>' + (u.active ? 'active' : 'pending') +
-    '</strong> · ' + esc(SPONSORS_ORG) + ': <strong>' + (o.active ? 'active' : 'pending') + '</strong>';
-  if (!o.active) {
-    html += ' · <a href="' + esc(o.setup_url || SPONSORS_SETUP) + '">enable org listing</a>';
+  function statusLabel(x) {
+    if (x && x.active) return 'live';
+    if (x && x.pending) return 'pending approval';
+    return 'not submitted';
+  }
+  html += '<p class="note mono">@' + esc(u.login || SPONSORS_LOGIN) + ' Sponsors: <strong>' + statusLabel(u) +
+    '</strong> · ' + esc(SPONSORS_ORG) + ': <strong>' + statusLabel(o) + '</strong>';
+  if (o && o.pending) {
+    html += ' · staff review (AMCM ENI umbrella, same payout profile as @amcmorais)';
+  } else if (!o || (!o.active && !o.pending)) {
+    html += ' · <a href="' + esc((o && o.setup_url) || SPONSORS_SETUP) + '">sponsors/accounts</a>';
   }
   html += '</p>';
   return html;
@@ -588,8 +605,8 @@ function homePage(lang, agg, sp) {
       ${sponsorsEmbedHtml(sp)}
       <p class="note">${
         pt
-          ? "Desafios (Issues) estratificam o fundo. Sponsors @amcmorais activo. Org StrataMesh-Laboratory: activar em github.com/sponsors/accounts. /pagamentos disponível."
-          : "Challenges (Issues) stratify the fund. @amcmorais Sponsors is live. Enable org listing at github.com/sponsors/accounts. /pagamentos available."
+          ? "Desafios estratificam o fundo. Sponsors @amcmorais público. Org StrataMesh-Laboratory submetida — aguarda aprovação do staff GitHub (guarda-chuva AMCM ENI, mesmos dados de conta). /pagamentos disponível."
+          : "Challenges stratify the fund. @amcmorais Sponsors is public. Org StrataMesh-Laboratory submitted — awaiting GitHub staff approval (AMCM ENI umbrella, same account data). /pagamentos available."
       }</p>
     </div>
     <div class="section">
@@ -728,8 +745,8 @@ function challengesPage(lang, data, sponsors) {
     <div class="grid">
       <div class="stat-box"><div class="stat">${(data && data.open_count) != null ? data.open_count : list.length}</div><div class="stat-label">${pt ? "abertos" : "open"}</div></div>
       <div class="stat-box"><div class="stat">${(data && data.accepted_count) || 0}</div><div class="stat-label">${pt ? "aceites" : "accepted"}</div></div>
-      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${(sp.user && sp.user.active) ? "active" : "pending"}</div><div class="stat-label">@amcmorais</div></div>
-      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${(sp.organization && sp.organization.active) ? "active" : "pending"}</div><div class="stat-label">org</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.8rem">${(sp.user && sp.user.active) ? "live" : ((sp.user && sp.user.pending) ? "pending" : "—")}</div><div class="stat-label">@amcmorais</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.8rem">${(sp.organization && sp.organization.active) ? "live" : ((sp.organization && sp.organization.pending) ? "pending" : "—")}</div><div class="stat-label">org</div></div>
     </div>
     <div class="actions">
       <a class="btn primary" href="${esc((sp && sp.preferred_url) || SPONSORS_URL)}" rel="noopener">GitHub Sponsors</a>
