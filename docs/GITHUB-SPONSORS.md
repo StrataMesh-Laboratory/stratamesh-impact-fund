@@ -1,35 +1,28 @@
-# GitHub Sponsors — StrataMesh Laboratory
+# GitHub Sponsors — status
 
-## Live today
+## Live
 
-| Account | Status | URL |
-|---------|--------|-----|
-| `@amcmorais` (contributor) | **Active** | https://github.com/sponsors/amcmorais |
-| `StrataMesh-Laboratory` (org) | Pending | Enable below |
+| Account | Public? | URL |
+|---------|---------|-----|
+| `@amcmorais` | **Yes** (`isPublic: true`) | https://github.com/sponsors/amcmorais |
+| `StrataMesh-Laboratory` | **Pending staff approval** (`listing` exists, `isPublic: false`) | https://github.com/sponsors/StrataMesh-Laboratory |
 
-Embeds (user):
+## Legal umbrella
 
-```html
-<iframe src="https://github.com/sponsors/amcmorais/button" title="Sponsor amcmorais" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
-<iframe src="https://github.com/sponsors/amcmorais/card" title="Sponsor amcmorais" height="225" width="600" style="border: 0;"></iframe>
-```
+StrataMesh Laboratory is not a separate legal person. It operates **under AMCM ENI** (André Manuel Calhegas Morais — Empresário em Nome Individual).
 
-Fund surfaces these on https://fund.calhegasmorais.pt/ and `/challenges`.
+Organisation Sponsors therefore uses the **same payout / tax account data** as the personal `@amcmorais` Sponsors profile. That is intentional and correct for ENI structure — not a duplicate company.
 
-## Enable organisation Sponsors (required once)
+GitHub staff review org profiles even when banking matches an already-approved personal listing. Until `isPublic: true` on the org:
 
-GitHub does **not** expose full org Sponsors onboarding via API (billing + payout profile).
+- Prefer **https://github.com/sponsors/amcmorais** for grants
+- Or **https://calhegasmorais.pt/pagamentos** (ENI EUR rail)
+- Fund API: `GET /api/v1/sponsors` → `organization.pending: true`
 
-1. Open **https://github.com/sponsors/accounts** while logged in as an org owner.
-2. Choose **StrataMesh-Laboratory**.
-3. Complete organisation payout / tax profile (use **AMCM ENI** details; contact `geral@eni.calhegasmorais.pt`).
-4. Publish the org Sponsors profile.
-5. Tell the Fund to prefer the org: add `StrataMesh-Laboratory` to `.github/FUNDING.yml`:
+When staff approves, GraphQL flips `isPublic` and the Fund prefers the org URL automatically. Then set:
 
 ```yaml
 github: [amcmorais, StrataMesh-Laboratory]
 ```
 
-6. `GET https://fund.calhegasmorais.pt/api/v1/sponsors` will show `organization.active: true` automatically via GraphQL.
-
-Until step 4–5, grantors should use **@amcmorais** Sponsors or **ENI /pagamentos**.
+in `.github/FUNDING.yml` across lab repos.
