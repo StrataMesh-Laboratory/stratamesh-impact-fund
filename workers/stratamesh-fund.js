@@ -1,11 +1,11 @@
 /**
  * stratamesh-fund — fund.calhegasmorais.pt
- * v0.3.0 — operational V0: real GitHub stats, KV claims, live aggregates
+ * v0.4.0 — Sponsors rails + stratified challenges (GitHub Issues as funded problems)
  *
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.3.0-ops";
+const VERSION = "0.4.0-sponsors-challenges";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -26,6 +26,16 @@ const OPERATOR = {
   payment_intent_purpose: "donation",
   contact: "geral@eni.calhegasmorais.pt",
 };
+
+
+const SPONSORS_LOGIN = "amcmorais";
+const SPONSORS_URL = "https://github.com/sponsors/amcmorais";
+const SPONSORS_SETUP = "https://github.com/sponsors";
+const CHALLENGE_REPOS = [
+  { owner: ORG, name: "stratamesh-impact-fund" },
+  { owner: ORG, name: "stratamesh-core" },
+];
+const CHALLENGE_LABEL = "impact-challenge";
 
 const PREPAID = [
   {
@@ -151,6 +161,8 @@ function shell({ lang, path, title, active, body }) {
       <span class="sep">·</span>
       <a href="/contributors${enQ}" class="${active === "contributors" ? "active" : ""}">${pt ? "Contribuidores" : "Contributors"}</a>
       <span class="sep">·</span>
+      <a href="/challenges${enQ}" class="${active === "challenges" ? "active" : ""}">${pt ? "Desafios" : "Challenges"}</a>
+      <span class="sep">·</span>
       <a href="/claim${enQ}" class="${active === "claim" ? "active" : ""}">${pt ? "Reclamar" : "Claim"}</a>
       <span class="sep">·</span>
       <a href="${pt ? "/en" : "/"}">${pt ? "EN" : "PT"}</a>
@@ -227,6 +239,129 @@ async function kvListClaims(env) {
   } catch (_) {
     return [];
   }
+}
+
+
+async function ghGraphQL(env, query, variables) {
+  const headers = ghHeaders(env);
+  headers["Content-Type"] = "application/json";
+  try {
+    const r = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query, variables: variables || {} }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok && !j.errors, json: j, status: r.status };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+async function sponsorsStatus(env) {
+  const q = `query($login:String!){
+    user(login:$login){
+      login
+      sponsorsListing { url shortDescription }
+      sponsorshipsAsMaintainer(first:1){ totalCount }
+    }
+  }`;
+  const res = await ghGraphQL(env, q, { login: SPONSORS_LOGIN });
+  const listing = res.ok && res.json && res.json.data && res.json.data.user
+    ? res.json.data.user.sponsorsListing
+    : null;
+  const active = !!listing;
+  return {
+    login: SPONSORS_LOGIN,
+    active,
+    url: active && listing.url ? listing.url : SPONSORS_URL,
+    setup_url: SPONSORS_SETUP,
+    listing: listing || null,
+    note: active
+      ? "GitHub Sponsors listing is active — preferred rail for recurring/one-time grants."
+      : "Sponsors listing not active yet — grantors use ENI /pagamentos or complete github.com/sponsors onboarding. FUNDING.yml already points at this login.",
+  };
+}
+
+function parseChallengeBody(body) {
+  const text = String(body || "");
+  let budget = null;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (/budget envelope|## budget/i.test(lines[i]) && i + 1 < lines.length) {
+      budget = lines[i + 1].trim();
+      break;
+    }
+  }
+  const metrics = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)/);
+    if (m) metrics.push({ done: m[1].toLowerCase() === "x", text: m[2].trim() });
+  }
+  return {
+    budget_hint: budget,
+    metrics_total: metrics.length,
+    metrics_done: metrics.filter((x) => x.done).length,
+    metrics,
+  };
+}
+
+async function listChallenges(env) {
+  const headers = ghHeaders(env);
+  const items = [];
+  for (const r of CHALLENGE_REPOS) {
+    const url =
+      "https://api.github.com/repos/" +
+      r.owner +
+      "/" +
+      r.name +
+      "/issues?state=open&labels=" +
+      encodeURIComponent(CHALLENGE_LABEL) +
+      "&per_page=50";
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) continue;
+      const list = await res.json();
+      if (!Array.isArray(list)) continue;
+      for (const issue of list) {
+        if (issue.pull_request) continue;
+        const labels = (issue.labels || []).map((l) => (typeof l === "string" ? l : l.name));
+        let phase = "open";
+        if (labels.includes("challenge-delivered")) phase = "delivered";
+        else if (labels.includes("challenge-accepted")) phase = "accepted";
+        else if (labels.includes("challenge-open")) phase = "open";
+        const parsed = parseChallengeBody(issue.body);
+        items.push({
+          id: r.name + "#" + issue.number,
+          number: issue.number,
+          title: issue.title,
+          html_url: issue.html_url,
+          repo: r.owner + "/" + r.name,
+          state: issue.state,
+          phase,
+          labels,
+          created_at: issue.created_at,
+          updated_at: issue.updated_at,
+          user: issue.user ? issue.user.login : null,
+          assignees: (issue.assignees || []).map((a) => a.login),
+          comments: issue.comments,
+          budget_hint: parsed.budget_hint,
+          metrics_total: parsed.metrics_total,
+          metrics_done: parsed.metrics_done,
+          metrics: parsed.metrics,
+          accept_hint: "Comment /accept on the issue or request assignment",
+        });
+      }
+    } catch (_) {}
+  }
+  items.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+  return {
+    challenges: items,
+    open_count: items.filter((c) => c.phase === "open").length,
+    accepted_count: items.filter((c) => c.phase === "accepted").length,
+    principle:
+      "The fund is stratified into open problems. Grantor chooses which challenge to fund. Grantee(s) accept and deliver against objective metrics agreed with the grantor. Rails: GitHub Sponsors + ENI /pagamentos.",
+  };
 }
 
 async function discoverContributors(env) {
@@ -390,6 +525,20 @@ function homePage(lang, agg) {
         </tbody>
       </table>
     </div>
+    
+    <div class="section">
+      <h2>${pt ? "Rails de financiamento" : "Funding rails"}</h2>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/sponsors/amcmorais" rel="noopener">GitHub Sponsors</a>
+        <a class="btn" href="https://calhegasmorais.pt/pagamentos" rel="noopener">${pt ? "ENI /pagamentos (EUR)" : "ENI /pagamentos (EUR)"}</a>
+        <a class="btn" href="/challenges${enQ}">${pt ? "Problemas abertos" : "Open problems"}</a>
+      </div>
+      <p class="note">${
+        pt
+          ? "O fundo estratifica-se em desafios (Issues GitHub). O grantor escolhe qual problema financiar. O grantee aceita e entrega contra métricas objectivas acordadas. Sponsors = rail preferido quando activo; /pagamentos opera já hoje."
+          : "The fund stratifies into challenges (GitHub Issues). The grantor chooses which problem to fund. Grantees accept and deliver against agreed objective metrics. Sponsors = preferred rail when active; /pagamentos works today."
+      }</p>
+    </div>
     <div class="section">
       <h2>API</h2>
       <p class="mono muted">GET /api/v1/health · /contributors · /repositories · /payout-methods · /claim (POST)</p>
@@ -486,6 +635,75 @@ function detailPage(lang, profile) {
     <p class="muted">${esc((profile.repositories || []).join(", "))}</p>
     ${payBlock}`;
   return shell({ lang, path: `/contributors/${login}`, title: `@${login} · Impact Fund`, active: "contributors", body });
+}
+
+
+function challengesPage(lang, data, sponsors) {
+  const pt = lang === "pt";
+  const path = pt ? "/challenges" : "/challenges?lang=en";
+  const list = (data && data.challenges) || [];
+  const sp = sponsors || {};
+  const rows = list
+    .map((c) => {
+      const phase = c.phase || "open";
+      const pill =
+        phase === "accepted"
+          ? '<span class="pill warn">accepted</span>'
+          : phase === "delivered"
+            ? '<span class="pill ok">delivered</span>'
+            : '<span class="pill">open</span>';
+      const metrics =
+        c.metrics_total > 0 ? c.metrics_done + "/" + c.metrics_total : "—";
+      return `<tr>
+        <td><a href="${esc(c.html_url)}" rel="noopener">${esc(c.title)}</a>
+          <div class="mono muted">${esc(c.id)}</div></td>
+        <td>${pill}</td>
+        <td class="mono">${esc(c.budget_hint || "—")}</td>
+        <td class="mono">${metrics}</td>
+        <td>${(c.assignees || []).map((a) => "@" + esc(a)).join(", ") || '<span class="muted">—</span>'}</td>
+      </tr>`;
+    })
+    .join("");
+  const body = `
+    <p class="kicker">${pt ? "problemas financiáveis · Issues GitHub" : "fundable problems · GitHub Issues"}</p>
+    <h1>${pt ? "Desafios de impacto" : "Impact challenges"}</h1>
+    <p class="lead">${
+      pt
+        ? "Cada desafio permanece aberto até um contribuidor ou equipa aceitar e servir a solução contra métricas objectivas acordadas entre grantor e grantees. O grantor escolhe qual projecto/desafio financiar."
+        : "Each challenge stays open until a contributor or team accepts and delivers against objective metrics agreed between grantor and grantees. The grantor chooses which project/challenge to fund."
+    }</p>
+    <div class="grid">
+      <div class="stat-box"><div class="stat">${(data && data.open_count) != null ? data.open_count : list.length}</div><div class="stat-label">${pt ? "abertos" : "open"}</div></div>
+      <div class="stat-box"><div class="stat">${(data && data.accepted_count) || 0}</div><div class="stat-label">${pt ? "aceites" : "accepted"}</div></div>
+      <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${sp.active ? "active" : "pending"}</div><div class="stat-label">Sponsors</div></div>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="${esc(sp.url || SPONSORS_URL)}" rel="noopener">GitHub Sponsors</a>
+      <a class="btn" href="https://calhegasmorais.pt/pagamentos" rel="noopener">/pagamentos</a>
+      <a class="btn" href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund/issues/new?template=funded-problem.yml" rel="noopener">${pt ? "Abrir desafio" : "Open challenge"}</a>
+    </div>
+    <p class="note">${esc(sp.note || "")}</p>
+    <div class="card" style="padding:0;overflow:auto">
+      <table>
+        <thead><tr>
+          <th>${pt ? "Problema" : "Problem"}</th>
+          <th>${pt ? "Fase" : "Phase"}</th>
+          <th>${pt ? "Orçamento" : "Budget"}</th>
+          <th>${pt ? "Métricas" : "Metrics"}</th>
+          <th>${pt ? "Grantees" : "Grantees"}</th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="5" class="muted">${pt ? "Sem desafios abertos." : "No open challenges."}</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div class="section">
+      <h2>${pt ? "Como funciona" : "How it works"}</h2>
+      <ol class="steps">
+        <li>${pt ? "Grantor abre um Issue com métricas e financia via Sponsors ou /pagamentos (referência #issue)." : "Grantor opens an Issue with metrics and funds via Sponsors or /pagamentos (reference #issue)."}</li>
+        <li>${pt ? "Contribuidor comenta /accept — desafio passa a aceite." : "Contributor comments /accept — challenge becomes accepted."}</li>
+        <li>${pt ? "Entrega com evidência; grantor confirma métricas; issue fecha e o grant é libertado." : "Delivery with evidence; grantor confirms metrics; issue closes and the grant is released."}</li>
+      </ol>
+    </div>`;
+  return shell({ lang, path, title: pt ? "Desafios · Impact Fund" : "Challenges · Impact Fund", active: "challenges", body });
 }
 
 function claimPage(lang, prefillLogin) {
@@ -595,14 +813,18 @@ export default {
     }
 
     if (path === "/api/v1/health" || path === "/health") {
+      const sp = await sponsorsStatus(env);
+      const ch = await listChallenges(env);
       return json({
         ok: true,
         service: "stratamesh-fund",
         version: VERSION,
-        phase: "v0-operational",
+        phase: "v0-sponsors-challenges",
         github_token_bound: !!env.GITHUB_TOKEN,
         kv_bound: !!env.FUND_KV,
-        principle: "GitHub is the evidence layer; the Fund is interpretation, transparency and payment.",
+        principle: "GitHub is the evidence layer; the Fund stratifies capital into open measurable challenges; Sponsors + ENI are the payment rails.",
+        sponsors: { active: sp.active, url: sp.url, login: sp.login },
+        challenges: { open: ch.open_count, accepted: ch.accepted_count, total_listed: ch.challenges.length },
         operator_payout: { login: OPERATOR.github_login, method: OPERATOR.method, widget_url: OPERATOR.widget_url },
       });
     }
@@ -687,6 +909,26 @@ export default {
       return json(rest, status >= 400 ? status : 200);
     }
 
+    
+    if (path === "/api/v1/sponsors") {
+      const sp = await sponsorsStatus(env);
+      return json(sp);
+    }
+
+    if (path === "/api/v1/challenges") {
+      const ch = await listChallenges(env);
+      return json(ch);
+    }
+
+    if (path === "/api/v1/challenges/" || path.startsWith("/api/v1/challenges/")) {
+      const ch = await listChallenges(env);
+      const key = decodeURIComponent(path.replace(/^\/api\/v1\/challenges\/?/, ""));
+      if (!key) return json(ch);
+      const found = ch.challenges.find((c) => c.id === key || String(c.number) === key || c.id.endsWith("#" + key));
+      if (!found) return json({ error: "not_found", key }, 404);
+      return json(found);
+    }
+
     if (path === "/api/v1/claims") {
       const claims = await kvListClaims(env);
       // redact emails in public list
@@ -735,6 +977,11 @@ export default {
         );
       }
       return html(detailPage(lang, found));
+    }
+    
+    if (path === "/challenges") {
+      const [data, sp] = await Promise.all([listChallenges(env), sponsorsStatus(env)]);
+      return html(challengesPage(lang, data, sp));
     }
     if (path === "/claim") {
       return html(claimPage(lang, url.searchParams.get("login") || ""));
