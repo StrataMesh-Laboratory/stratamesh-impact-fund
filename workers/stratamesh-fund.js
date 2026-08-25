@@ -581,14 +581,15 @@ function homePage(lang, agg, sp) {
     <div class="section">
       <h2>${pt ? "Rails de financiamento" : "Funding rails"}</h2>
       <div class="actions">
-        <a class="btn primary" href="https://github.com/sponsors/amcmorais" rel="noopener">GitHub Sponsors</a>
-        <a class="btn" href="https://calhegasmorais.pt/pagamentos" rel="noopener">${pt ? "ENI /pagamentos (EUR)" : "ENI /pagamentos (EUR)"}</a>
+        <a class="btn primary" href="${esc((sp && sp.preferred_url) || SPONSORS_URL)}" rel="noopener">GitHub Sponsors</a>
+        <a class="btn" href="https://calhegasmorais.pt/pagamentos" rel="noopener">ENI /pagamentos (EUR)</a>
         <a class="btn" href="/challenges${enQ}">${pt ? "Problemas abertos" : "Open problems"}</a>
       </div>
+      ${sponsorsEmbedHtml(sp)}
       <p class="note">${
         pt
-          ? "O fundo estratifica-se em desafios (Issues GitHub). O grantor escolhe qual problema financiar. O grantee aceita e entrega contra métricas objectivas acordadas. Sponsors = rail preferido quando activo; /pagamentos opera já hoje."
-          : "The fund stratifies into challenges (GitHub Issues). The grantor chooses which problem to fund. Grantees accept and deliver against agreed objective metrics. Sponsors = preferred rail when active; /pagamentos works today."
+          ? "Desafios (Issues) estratificam o fundo. Sponsors @amcmorais activo. Org StrataMesh-Laboratory: activar em github.com/sponsors/accounts. /pagamentos disponível."
+          : "Challenges (Issues) stratify the fund. @amcmorais Sponsors is live. Enable org listing at github.com/sponsors/accounts. /pagamentos available."
       }</p>
     </div>
     <div class="section">
