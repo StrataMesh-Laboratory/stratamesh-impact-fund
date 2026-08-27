@@ -8,6 +8,8 @@ body:
       value: |
         Problems stay **open** until grantee(s) accept and deliver against **objective metrics** agreed with the grantor.
         Funding rails: [GitHub Sponsors](https://github.com/sponsors/amcmorais) · [Impact Fund](https://fund.calhegasmorais.pt) · [ENI /pagamentos](https://calhegasmorais.pt/pagamentos)
+
+        **Honest envelope:** V0 has no deposited / pledged / reserved EUR. Write `0 — no current funding yet` unless a grantor has actually deposited. A bare integer (e.g. 150) will be treated as **not treasury** and withheld on the public table. Set Funded = false until a rail receipt exists.
   - type: input
     id: grantor
     attributes:
@@ -30,7 +32,19 @@ body:
     id: budget
     attributes:
       label: Budget envelope (EUR)
-      placeholder: "e.g. 250"
+      description: Default is unfunded. A number is not treasury. Only put a figure after a real deposit, and still set Funded=false until the receipt is linked.
+      placeholder: "0 — no current funding yet"
+    validations:
+      required: true
+  - type: dropdown
+    id: funded
+    attributes:
+      label: Funded
+      description: true only after a grantor deposited on Sponsors or ENI /pagamentos AND a receipt is linked in the issue.
+      options:
+        - "false"
+        - "true"
+      default: 0
     validations:
       required: true
   - type: textarea

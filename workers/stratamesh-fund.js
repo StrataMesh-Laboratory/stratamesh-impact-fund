@@ -1,11 +1,11 @@
 /**
  * stratamesh-fund — fund.calhegasmorais.pt
- * v0.4.0 — Sponsors rails + stratified challenges (GitHub Issues as funded problems)
+ * v0.4.4 — Honest envelopes: a Budget number is not treasury. Bare integers withheld.
  *
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.4.3-sponsors-theme";
+const VERSION = "0.4.4-honest-envelope";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -338,14 +338,62 @@ async function sponsorsStatus(env) {
   };
 }
 
+function classifyEnvelope({ budget_hint, funded }) {
+  const raw = String(budget_hint || "").trim();
+  const fundedTrue = funded === true;
+  const looksUnfunded =
+    !raw ||
+    raw === "—" ||
+    raw === "-" ||
+    /^0(\b|[^\d]|$)/.test(raw) ||
+    /no current funding|unfunded|sem financiamento|n[aã]o depositado|not deposited|not treasury/i.test(raw);
+  const bareNumber = /^\d+([.,]\d+)?$/.test(raw);
+  const out = { funded: false, treasury: false };
+
+  if (fundedTrue && raw && !looksUnfunded) {
+    out.funded = true;
+    out.budget_hint = raw;
+    out.budget_display_pt = raw + " · envelope (não tesouraria)";
+    out.budget_display_en = raw + " · envelope (not treasury)";
+    return out;
+  }
+
+  if (bareNumber && !fundedTrue) {
+    out.budget_hint = "0 — no current funding yet";
+    out.budget_display_pt = "0 · sem financiamento";
+    out.budget_display_en = "0 · no current funding yet";
+    out.withheld_bare_number = true;
+    return out;
+  }
+
+  if (looksUnfunded) {
+    out.budget_hint = "0 — no current funding yet";
+    out.budget_display_pt = "0 · sem financiamento";
+    out.budget_display_en = "0 · no current funding yet";
+    return out;
+  }
+
+  out.budget_hint = raw;
+  out.budget_display_pt = "proposto · não depositado";
+  out.budget_display_en = "proposed · not deposited";
+  return out;
+}
+
 function parseChallengeBody(body) {
   const text = String(body || "");
   let budget = null;
+  let funded = null;
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (/budget envelope|## budget/i.test(lines[i]) && i + 1 < lines.length) {
       budget = lines[i + 1].trim();
-      break;
+    }
+    const inline = lines[i].match(/^\s*(?:##\s*)?funded\s*[:\-]?\s*(true|false|yes|no|0|1)\s*$/i);
+    if (inline) {
+      funded = /^(true|yes|1)$/i.test(inline[1]);
+    } else if (/^##\s*funded\b/i.test(lines[i]) && i + 1 < lines.length && funded == null) {
+      const v = lines[i + 1].trim().toLowerCase();
+      if (/^(true|false|yes|no|0|1)$/.test(v)) funded = /^(true|yes|1)$/.test(v);
     }
   }
   const metrics = [];
@@ -353,8 +401,14 @@ function parseChallengeBody(body) {
     const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)/);
     if (m) metrics.push({ done: m[1].toLowerCase() === "x", text: m[2].trim() });
   }
+  const envelope = classifyEnvelope({ budget_hint: budget, funded });
   return {
-    budget_hint: budget,
+    budget_hint: envelope.budget_hint,
+    budget_display_pt: envelope.budget_display_pt,
+    budget_display_en: envelope.budget_display_en,
+    funded: envelope.funded,
+    treasury: false,
+    withheld_bare_number: !!envelope.withheld_bare_number,
     metrics_total: metrics.length,
     metrics_done: metrics.filter((x) => x.done).length,
     metrics,
@@ -401,6 +455,11 @@ async function listChallenges(env) {
           assignees: (issue.assignees || []).map((a) => a.login),
           comments: issue.comments,
           budget_hint: parsed.budget_hint,
+          budget_display_pt: parsed.budget_display_pt,
+          budget_display_en: parsed.budget_display_en,
+          funded: !!parsed.funded,
+          treasury: false,
+          withheld_bare_number: !!parsed.withheld_bare_number,
           metrics_total: parsed.metrics_total,
           metrics_done: parsed.metrics_done,
           metrics: parsed.metrics,
@@ -414,8 +473,11 @@ async function listChallenges(env) {
     challenges: items,
     open_count: items.filter((c) => c.phase === "open").length,
     accepted_count: items.filter((c) => c.phase === "accepted").length,
+    treasury: false,
+    envelope_rule:
+      "A budget figure is not treasury. V0 has no deposited/pledged/reserved EUR. Bare integers without Funded:true are withheld. Public default: 0 — no current funding yet.",
     principle:
-      "The fund is stratified into open problems. Grantor chooses which challenge to fund. Grantee(s) accept and deliver against objective metrics agreed with the grantor. Rails: GitHub Sponsors + ENI /pagamentos.",
+      "The fund is stratified into open problems. Grantor chooses which challenge to fund. Grantee(s) accept and deliver against objective metrics agreed with the grantor. Rails: GitHub Sponsors + ENI /pagamentos. No envelope is cash until Funded:true + rail receipt.",
   };
 }
 
@@ -776,14 +838,14 @@ function challengesPage(lang, data, sponsors) {
         <td><a href="${esc(c.html_url)}" rel="noopener">${esc(c.title)}</a>
           <div class="mono muted">${esc(c.id)}</div></td>
         <td>${pill}</td>
-        <td class="mono">${esc(c.budget_hint || "—")}</td>
+        <td class="mono">${esc((pt ? c.budget_display_pt : c.budget_display_en) || c.budget_hint || "0 · sem financiamento")}</td>
         <td class="mono">${metrics}</td>
         <td>${(c.assignees || []).map((a) => "@" + esc(a)).join(", ") || '<span class="muted">—</span>'}</td>
       </tr>`;
     })
     .join("");
   const body = `
-    <p class="kicker">${pt ? "problemas financiáveis · Issues GitHub" : "fundable problems · GitHub Issues"}</p>
+    <p class="kicker">${pt ? "problemas abertos · sem tesouraria V0" : "open problems · V0 has no treasury"}</p>
     <h1>${pt ? "Desafios de impacto" : "Impact challenges"}</h1>
     <p class="lead">${
       pt
@@ -803,6 +865,11 @@ function challengesPage(lang, data, sponsors) {
     </div>
     ${sponsorsEmbedHtml(sp)}
     <p class="note">${esc((sp && sp.note) || "")}</p>
+    <p class="note">${
+      pt
+        ? "Nenhum valor na coluna Orçamento é tesouraria. V0 não tem EUR depositado, pledged ou reservado. Estado honesto até um grantor depositar e o issue marcar Funded: true: 0 · sem financiamento."
+        : "No figure in the Budget column is treasury. V0 has no deposited, pledged, or reserved EUR. Honest state until a grantor deposits and the issue marks Funded: true: 0 · no current funding yet."
+    }</p>
     <div class="card" style="padding:0;overflow:auto">
       <table>
         <thead><tr>
@@ -951,6 +1018,8 @@ export default {
           organization: sp.organization,
         },
         challenges: { open: ch.open_count, accepted: ch.accepted_count, total_listed: ch.challenges.length },
+        treasury: false,
+        envelope_rule: ch.envelope_rule,
         operator_payout: { login: OPERATOR.github_login, method: OPERATOR.method, widget_url: OPERATOR.widget_url },
       });
     }
