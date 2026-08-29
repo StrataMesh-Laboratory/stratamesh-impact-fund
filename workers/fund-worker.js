@@ -50,7 +50,7 @@ function page(lang, path) {
   const t = pt
     ? {
         title: "StrataMesh Impact Fund",
-        tag: "Fundo agrupado para quem constrói a StrataMesh",
+        tag: "Por agora o Impact Fund segue o GitHub Sponsors e cada recipiente individualmente. O fundo agrupado será libertado mais tarde. Evidência pública no GitHub.",
         lead:
           "Recolhemos dados de contribuição publicamente verificáveis no GitHub, tornamo-los comparáveis e usamos essa evidência para informar bolsas transparentes a contribuidores.",
         fund: "Financiar contribuidores",
@@ -78,7 +78,7 @@ function page(lang, path) {
       }
     : {
         title: "StrataMesh Impact Fund",
-        tag: "A pooled fund for the people building StrataMesh",
+        tag: "For now the Impact Fund follows GitHub Sponsors and each recipient individually. The pooled fund will be released later. Public GitHub evidence.",
         lead:
           "We collect publicly verifiable contribution data from GitHub, make it comparable, and use the resulting evidence to inform transparent contributor grants.",
         fund: "Fund the Contributors",
