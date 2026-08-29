@@ -1,11 +1,11 @@
 /**
  * stratamesh-fund — fund.calhegasmorais.pt
- * v0.4.4 — Honest envelopes: a Budget number is not treasury. Bare integers withheld.
+ * v0.4.5 — GitHub Sponsors + per-recipient; pooled fund later. Honest envelopes still apply.
  *
  * GitHub = evidence · Fund = stats + payout routing
  * No STRATA / no GDA in V0
  */
-const VERSION = "0.4.4-honest-envelope";
+const VERSION = "0.4.5-sponsors-individual";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -196,7 +196,7 @@ function shell({ lang, path, title, active, body }) {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${esc(title)}</title>
-  <meta name="description" content="${pt ? "Fundo StrataMesh — evidência GitHub e bolsas EUR." : "StrataMesh fund — GitHub evidence and EUR grants."}"/>
+  <meta name="description" content="${pt ? "Fundo StrataMesh — evidência GitHub, GitHub Sponsors e grants por recipiente." : "StrataMesh fund — GitHub evidence, GitHub Sponsors, and per-recipient grants."}"/>
   <link rel="canonical" href="https://fund.calhegasmorais.pt${path.split("?")[0]}"/>
   <style>${css()}</style>
 </head>
@@ -668,8 +668,8 @@ function homePage(lang, agg, sp) {
     <h1>StrataMesh Impact Fund</h1>
     <p class="lead">${
       pt
-        ? "Fundo agrupado para quem constrói a StrataMesh. Dados públicos do GitHub, perfis comparáveis, desembolso em EUR via contas registadas ou /pagamentos do operador."
-        : "Pooled fund for people building StrataMesh. Public GitHub data, comparable profiles, EUR payout via registered accounts or the operator /pagamentos portal."
+        ? "Por agora o Impact Fund segue o GitHub Sponsors e cada recipiente individualmente. O fundo agrupado será libertado mais tarde. Evidência pública no GitHub."
+        : "For now the Impact Fund follows GitHub Sponsors and each recipient individually. The pooled fund will be released later. Public GitHub evidence."
     }</p>
     <div class="actions">
       <a class="btn primary" href="https://calhegasmorais.pt/pagamentos" rel="noopener">${pt ? "Donativo (operador)" : "Donate (operator)"}</a>
@@ -684,15 +684,15 @@ function homePage(lang, agg, sp) {
     </div>
     <p class="note">${
       pt
-        ? "Pool EUR: aberto a donativos via /pagamentos. Ainda não há época de grants congelada — V0 é evidência + registo de contas."
-        : "EUR pool: open for donations via /pagamentos. No frozen grant epoch yet — V0 is evidence + account registration."
+        ? "Não há pool de grants neste corte. Grantors usam GitHub Sponsors (@amcmorais) ou pagam cada contribuidor na conta registada. Fundo agrupado: mais tarde."
+        : "No grant pool this cut. Grantors use GitHub Sponsors (@amcmorais) or pay each contributor on their registered account. Pooled fund later."
     }</p>
     <div class="section">
       <h2>${pt ? "Como funciona" : "How it works"}</h2>
       <ol class="steps">
         <li>GitHub → estatísticas por contribuidor nos repos StrataMesh-Laboratory</li>
         <li>${pt ? "Reclamar perfil (login público + email) ou operador via /pagamentos" : "Claim profile (public login + email) or operator via /pagamentos"}</li>
-        <li>${pt ? "Grantor humano decide bolsas; cartão pré-pago ou conta registada" : "Human grantor decides grants; prepaid card or registered account"}</li>
+        <li>${pt ? "O grantor escolhe GitHub Sponsors ou paga cada recipiente; o fundo agrupado ainda não está aberto" : "The grantor chooses GitHub Sponsors or pays each recipient; the pooled fund is not open yet"}</li>
       </ol>
     </div>
     <div class="section">

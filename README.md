@@ -13,7 +13,7 @@
 | Layer | Role |
 |-------|------|
 | **GitHub** | Evidence of contribution |
-| **Fund** | Interpretation, transparency, pooled grants (EUR/USD) |
+| **Fund** | Interpretation + GitHub Sponsors and per-recipient grants now; pooled grants later |
 
 **V0 does not use:** STRATA · GDA · AI impact scores · autonomous on-chain settlement.
 
@@ -24,7 +24,14 @@
 3. Aggregate by contributor  
 4. Generate comparable contributor profiles  
 5. Let contributors claim profiles and register payout details  
-6. Accept donations into a pooled fund and record/distribute grants  
+6. Point grantors to GitHub Sponsors and paying each recipient individually; pooled fund later  
+
+
+## Today vs later
+
+**Today (operational money rails):** [GitHub Sponsors](https://github.com/sponsors/amcmorais) (`@amcmorais`) plus per-recipient payments on registered accounts. There is no live pooled EUR/USD grant pool in this cut.
+
+**Later:** Phase 3 pooled epochs stay documented below as a future release — not live.
 
 ## Phases
 
