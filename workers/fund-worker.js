@@ -251,6 +251,7 @@ function page(lang, path) {
         GET /api/v1/epochs<br/>
         GET /api/v1/repositories<br/>
         GET /api/v1/contributors<br/>
+        GET /api/v1/ranking<br/>
         GET /api/v1/methodology/current
       </p>
     </section>
@@ -369,10 +370,27 @@ export default {
       } catch (e) {
         contributors = [];
       }
+      const contributorsWithSummary = contributors.map((c) => ({
+        ...c,
+        summary: {
+          stats: {
+            contributions: c.contributions_hint || 0,
+            repositories: c.repositories || [],
+            claimed: false,
+            operator: c.github_login === "amcmorais",
+          },
+          substance: [],
+          executive_pt:
+            "Explorer stub: totais GitHub apenas. Resumos executivos e substância (títulos de commit/PR) vivem em workers/stratamesh-fund.js.",
+          executive_en:
+            "Explorer stub: GitHub totals only. Executive summaries and substance (commit/PR titles) live in workers/stratamesh-fund.js.",
+          evidence_at: new Date().toISOString(),
+        },
+      }));
       return json({
         phase: "1-explorer",
-        note: "Live GitHub contributor hints (not a frozen epoch). Statistics are descriptive only.",
-        contributors,
+        note: "Live GitHub contributor hints (not a frozen epoch). Statistics are descriptive only. Executive summaries live on stratamesh-fund.js.",
+        contributors: contributorsWithSummary,
       });
     }
 
@@ -381,8 +399,69 @@ export default {
       return json({
         github_login: key,
         epoch: null,
-        note: "Per-contributor frozen stats land after epoch pipeline (Phase 1→3).",
+        note: "Per-contributor frozen stats land after epoch pipeline (Phase 1→3). Live grantor briefs: workers/stratamesh-fund.js GET /api/v1/contributors/:login",
         stats: null,
+        summary: {
+          stats: null,
+          substance: [],
+          executive_pt: "Evidência em falta neste stub explorer. Ver o worker live stratamesh-fund.js.",
+          executive_en: "Evidence missing in this explorer stub. See the live worker stratamesh-fund.js.",
+          evidence_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    if (path === "/api/v1/ranking" || path === "/api/v1/challenge-ranking") {
+      const headers = {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "stratamesh-impact-fund",
+        ...(env.GITHUB_TOKEN ? { Authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}),
+      };
+      const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const activityByLogin = new Map();
+      let accepts = 0;
+      for (const n of numbers) {
+        try {
+          const res = await fetch(
+            `https://api.github.com/repos/StrataMesh-Laboratory/stratamesh-impact-fund/issues/${n}/comments?per_page=100`,
+            { headers },
+          );
+          if (!res.ok) continue;
+          const comments = await res.json();
+          if (!Array.isArray(comments)) continue;
+          for (const c of comments) {
+            const login = c.user && c.user.login;
+            if (!login || (c.user && c.user.type === "Bot")) continue;
+            if (/^\s*\/accept\b/i.test(String(c.body || ""))) accepts += 1;
+            const rec = activityByLogin.get(login.toLowerCase()) || {
+              login,
+              comments: 0,
+              issues: [],
+              role: login === "amcmorais" ? "grantor_operator" : "commenter",
+              kind: "activity",
+              note: "Issue comments, not grantee delivery.",
+            };
+            rec.comments += 1;
+            rec.issues.push({
+              number: n,
+              html_url: c.html_url,
+              issue_url: `https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund/issues/${n}`,
+            });
+            activityByLogin.set(login.toLowerCase(), rec);
+          }
+        } catch (_) {}
+      }
+      const activity = [...activityByLogin.values()]
+        .map((a) => ({ ...a, score: a.comments }))
+        .sort((a, b) => b.score - a.score);
+      return json({
+        generated_at: new Date().toISOString(),
+        challenges_open: 9,
+        deliveries: [],
+        activity,
+        note: "No grantee deliveries until /accept + evidence PR.",
+        accepts_found: accepts,
+        worker: "fund-worker explorer stub — live UI is workers/stratamesh-fund.js",
       });
     }
 
