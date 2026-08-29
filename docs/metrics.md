@@ -52,3 +52,11 @@ Every material number on a profile MUST offer a path to GitHub evidence
 - AI commit quality scores  
 - Automatic € conversion from LOC  
 - Roadmap phase multipliers as money weights (may appear later as *indicators* only)
+
+## Grantor executive summaries (V0.4.6)
+
+Contributor `summary.executive_pt` / `summary.executive_en` are **interpretations of GitHub evidence** for grantors (contributor totals, in-scope repos, recent public commit/PR/issue titles with links).
+
+They are **not** value scores, **not** STRATA, **not** treasury, and **not** an AI impact score. If the GitHub API returns no titles, the brief must say evidence is missing.
+
+Challenge ranking (`GET /api/v1/ranking`) counts only challenge-linked work on this repo’s posted issues #1–#9: `/accept`, assignment (not merely opening the issue as grantor), and PRs that GitHub cross-references to those issues. Comments on those issues are listed as **activity, not delivery**.

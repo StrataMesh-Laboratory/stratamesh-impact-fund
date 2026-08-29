@@ -1,11 +1,11 @@
 /**
  * stratamesh-fund — fund.calhegasmorais.pt
- * v0.4.5 — GitHub Sponsors + per-recipient; pooled fund later. Honest envelopes still apply.
+ * v0.4.6 — grantor exec summaries + challenge ranking. GitHub Sponsors + per-recipient; pooled fund later.
  *
  * GitHub = evidence · Fund = stats + payout routing
- * No STRATA / no GDA in V0
+ * No STRATA / no GDA in V0 · no AI impact scores
  */
-const VERSION = "0.4.5-sponsors-individual";
+const VERSION = "0.4.6-grantor-brief";
 const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
@@ -40,6 +40,11 @@ const CHALLENGE_REPOS = [
   { owner: ORG, name: "stratamesh-core" },
 ];
 const CHALLENGE_LABEL = "impact-challenge";
+const FUND_REPO = "stratamesh-impact-fund";
+const POSTED_CHALLENGE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const RANKING_NOTE = "No grantee deliveries until /accept + evidence PR.";
+const SUMMARY_CACHE_MS = 30 * 60 * 1000;
+const RANKING_CACHE_MS = 10 * 60 * 1000;
 
 const PREPAID = [
   {
@@ -235,14 +240,23 @@ async function kvGet(env, key) {
   }
 }
 
-async function kvPut(env, key, value) {
+async function kvPut(env, key, value, expirationTtl) {
   if (!env.FUND_KV) return false;
   try {
-    await env.FUND_KV.put(key, JSON.stringify(value));
+    const opts = expirationTtl ? { expirationTtl: expirationTtl } : {};
+    await env.FUND_KV.put(key, JSON.stringify(value), opts);
     return true;
   } catch (_) {
     return false;
   }
+}
+
+async function kvGetFresh(env, key, maxAgeMs) {
+  const v = await kvGet(env, key);
+  if (!v || !v.cached_at) return null;
+  const t = Date.parse(v.cached_at);
+  if (!t || Date.now() - t > maxAgeMs) return null;
+  return v;
 }
 
 async function kvListClaims(env) {
@@ -588,6 +602,772 @@ async function discoverContributors(env) {
   };
 }
 
+function isAcceptComment(body) {
+  return /^\s*\/accept\b/i.test(String(body || ""));
+}
+
+function firstSentence(text) {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  const m = t.match(/^[^.!?]+[.!?]/);
+  const s = m ? m[0] : t;
+  return s.length > 220 ? s.slice(0, 217) + "…" : s;
+}
+
+function challengeIssueUrl(number) {
+  return "https://github.com/" + ORG + "/" + FUND_REPO + "/issues/" + number;
+}
+
+async function ghJson(env, url) {
+  try {
+    const res = await fetch(url, { headers: ghHeaders(env) });
+    const data = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, data: data };
+  } catch (e) {
+    return { ok: false, status: 0, data: null, error: String(e.message || e) };
+  }
+}
+
+function pushSubstance(list, item) {
+  if (!item || !item.html_url) return;
+  const title = String(item.title || "").split("\n")[0].trim().slice(0, 160);
+  list.push({
+    repo: item.repo || "",
+    title: title || "(no title returned)",
+    html_url: item.html_url,
+    kind: item.kind,
+    at: item.at || null,
+  });
+}
+
+function dedupeSubstance(list, limit) {
+  const seen = new Set();
+  const out = [];
+  const sorted = (list || []).slice().sort(function (a, b) {
+    return String(b.at || "").localeCompare(String(a.at || ""));
+  });
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i];
+    const k = String(s.kind) + ":" + String(s.html_url);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      repo: s.repo,
+      title: s.title,
+      html_url: s.html_url,
+      kind: s.kind,
+    });
+    if (out.length >= (limit || 8)) break;
+  }
+  return out;
+}
+
+async function fetchSubstance(env, login) {
+  const cacheKey = "gh:substance:" + String(login).toLowerCase();
+  const cached = await kvGetFresh(env, cacheKey, SUMMARY_CACHE_MS);
+  if (cached && cached.substance) {
+    return { substance: cached.substance, evidence_at: cached.evidence_at, cached: true };
+  }
+
+  const raw = [];
+  const headers = ghHeaders(env);
+
+  await Promise.all(
+    REPOS.map(async function (r) {
+      try {
+        const url =
+          "https://api.github.com/repos/" +
+          r.owner +
+          "/" +
+          r.name +
+          "/commits?author=" +
+          encodeURIComponent(login) +
+          "&per_page=3";
+        const res = await fetch(url, { headers: headers });
+        if (!res.ok) return;
+        const list = await res.json();
+        if (!Array.isArray(list)) return;
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i];
+          const msg = c.commit && c.commit.message ? c.commit.message : "";
+          const at = c.commit && c.commit.author && c.commit.author.date ? c.commit.author.date : null;
+          pushSubstance(raw, {
+            repo: r.name,
+            title: msg,
+            html_url: c.html_url,
+            kind: "commit",
+            at: at,
+          });
+          if (i === 0 && c.sha) {
+            try {
+              const prUrl =
+                "https://api.github.com/repos/" +
+                r.owner +
+                "/" +
+                r.name +
+                "/commits/" +
+                c.sha +
+                "/pulls";
+              const prRes = await fetch(prUrl, { headers: headers });
+              if (prRes.ok) {
+                const prs = await prRes.json();
+                if (Array.isArray(prs)) {
+                  for (let j = 0; j < prs.length; j++) {
+                    const pr = prs[j];
+                    pushSubstance(raw, {
+                      repo: r.name,
+                      title: pr.title,
+                      html_url: pr.html_url,
+                      kind: "pr",
+                      at: pr.updated_at || pr.closed_at || at,
+                    });
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }),
+  );
+
+  try {
+    const q = "author:" + login + " org:" + ORG + " type:pr";
+    const url =
+      "https://api.github.com/search/issues?q=" + encodeURIComponent(q) + "&per_page=5&sort=updated";
+    const pack = await ghJson(env, url);
+    const items = pack.ok && pack.data && Array.isArray(pack.data.items) ? pack.data.items : [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const repoUrl = String(it.repository_url || "");
+      const repo = repoUrl.split("/").pop() || "";
+      pushSubstance(raw, {
+        repo: repo,
+        title: it.title,
+        html_url: it.html_url,
+        kind: "pr",
+        at: it.updated_at,
+      });
+    }
+  } catch (_) {}
+
+  try {
+    const url =
+      "https://api.github.com/users/" + encodeURIComponent(login) + "/events/public?per_page=20";
+    const pack = await ghJson(env, url);
+    const events = pack.ok && Array.isArray(pack.data) ? pack.data : [];
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const full = ev.repo && ev.repo.name ? ev.repo.name : "";
+      if (full.indexOf(ORG + "/") !== 0) continue;
+      const shortRepo = full.split("/")[1] || full;
+      const payload = ev.payload || {};
+      if (ev.type === "PushEvent") {
+        const commits = payload.commits || [];
+        for (let j = 0; j < commits.length; j++) {
+          const c = commits[j];
+          pushSubstance(raw, {
+            repo: shortRepo,
+            title: c.message,
+            html_url: "https://github.com/" + full + "/commit/" + c.sha,
+            kind: "commit",
+            at: ev.created_at,
+          });
+        }
+      } else if (ev.type === "PullRequestEvent" && payload.pull_request) {
+        const pr = payload.pull_request;
+        pushSubstance(raw, {
+          repo: shortRepo,
+          title: pr.title,
+          html_url: pr.html_url,
+          kind: "pr",
+          at: ev.created_at,
+        });
+      } else if (ev.type === "IssuesEvent" && payload.issue) {
+        const issue = payload.issue;
+        pushSubstance(raw, {
+          repo: shortRepo,
+          title: issue.title,
+          html_url: issue.html_url,
+          kind: "issue",
+          at: ev.created_at,
+        });
+      }
+    }
+  } catch (_) {}
+
+  const substance = dedupeSubstance(raw, 8);
+  const pack = {
+    cached_at: new Date().toISOString(),
+    evidence_at: new Date().toISOString(),
+    substance: substance,
+  };
+  await kvPut(env, cacheKey, pack, Math.floor(SUMMARY_CACHE_MS / 1000));
+  return { substance: substance, evidence_at: pack.evidence_at, cached: false };
+}
+
+function interpretExecutive(opts) {
+  const login = opts.login;
+  const stats = opts.stats || {};
+  const substance = opts.substance || [];
+  const opened = opts.openedChallenges || [];
+  const activity = opts.activity || null;
+  const deliveries = opts.deliveries || [];
+  const isOperator = !!opts.isOperator;
+  const repos = stats.repositories || [];
+  const repoList = repos.length ? repos.join(", ") : "none listed";
+  const n = stats.contributions || 0;
+  const claimed = !!stats.claimed;
+
+  const cites = substance.slice(0, 6).map(function (s) {
+    return s.kind + " “" + s.title + "” in " + s.repo + " <" + s.html_url + ">";
+  });
+
+  const en = [];
+  const pt = [];
+
+  if (isOperator) {
+    en.push(
+      "@" +
+        login +
+        " is the laboratory operator (claimed; payout rail ENI /pagamentos). Grantor of posted challenges, not a ranked grantee.",
+    );
+    pt.push(
+      "@" +
+        login +
+        " é o operador do laboratório (reclamado; rail de desembolso ENI /pagamentos). Grantor dos desafios publicados, não um grantee no ranking.",
+    );
+  } else if (claimed) {
+    en.push("@" + login + " has a registered claim on this fund.");
+    pt.push("@" + login + " tem um claim registado neste fundo.");
+  } else {
+    en.push("@" + login + " is unclaimed on this fund (no payout rail registered).");
+    pt.push("@" + login + " não reclamou perfil neste fundo (sem rail de desembolso registado).");
+  }
+
+  en.push(
+    "GitHub contributor totals (org repos in scope): " +
+      n +
+      " contribution" +
+      (n === 1 ? "" : "s") +
+      " across " +
+      repos.length +
+      " repositor" +
+      (repos.length === 1 ? "y" : "ies") +
+      " (" +
+      repoList +
+      "). These are GitHub’s contributor counts, not an impact score.",
+  );
+  pt.push(
+    "Totais GitHub (repos no âmbito): " +
+      n +
+      " contribuiç" +
+      (n === 1 ? "ão" : "ões") +
+      " em " +
+      repos.length +
+      " repositório" +
+      (repos.length === 1 ? "" : "s") +
+      " (" +
+      repoList +
+      "). São contagens da API GitHub, não um score de impacto.",
+  );
+
+  if (cites.length) {
+    en.push("Substance from public GitHub evidence (recent commit/PR/issue titles): " + cites.join("; ") + ".");
+    pt.push(
+      "Substância a partir de evidência GitHub pública (títulos recentes de commit/PR/issue): " +
+        cites.join("; ") +
+        ".",
+    );
+  } else {
+    en.push(
+      "No recent public commit, pull request, or issue titles were returned by the GitHub API for @" +
+        login +
+        " on in-scope repositories. Evidence missing.",
+    );
+    pt.push(
+      "A API GitHub não devolveu títulos recentes de commit, pull request ou issue para @" +
+        login +
+        " nos repositórios no âmbito. Evidência em falta.",
+    );
+  }
+
+  if (opened.length) {
+    const nums = opened.map(function (x) {
+      return "#" + x;
+    }).join(", ");
+    en.push(
+      "Opened challenges " +
+        nums +
+        " on " +
+        FUND_REPO +
+        " as grantor. Opening a challenge is not grantee delivery and does not enter the delivery ranking.",
+    );
+    pt.push(
+      "Abriu os desafios " +
+        nums +
+        " em " +
+        FUND_REPO +
+        " como grantor. Abrir um desafio não é entrega de grantee e não entra no ranking de entregas.",
+    );
+  }
+
+  if (activity && activity.comments) {
+    const iss = (activity.issues || [])
+      .map(function (i) {
+        return "#" + i.number;
+      })
+      .filter(function (v, i, a) {
+        return a.indexOf(v) === i;
+      })
+      .join(", ");
+    en.push(
+      "Challenge-issue activity (comments, not delivery): " +
+        activity.comments +
+        " comment(s) on " +
+        (iss || "listed issues") +
+        ".",
+    );
+    pt.push(
+      "Actividade em issues de desafio (comentários, não entrega): " +
+        activity.comments +
+        " comentário(s) em " +
+        (iss || "issues listados") +
+        ".",
+    );
+  } else {
+    en.push("No comments on posted challenge issues #1–#9 were found for @" + login + ".");
+    pt.push("Não foram encontrados comentários de @" + login + " nos desafios publicados #1–#9.");
+  }
+
+  if (deliveries.length) {
+    en.push(
+      "Challenge deliveries recorded: " +
+        deliveries
+          .map(function (d) {
+            return d.challenge + " score " + d.score;
+          })
+          .join("; ") +
+        ".",
+    );
+    pt.push(
+      "Entregas de desafio registadas: " +
+        deliveries
+          .map(function (d) {
+            return d.challenge + " score " + d.score;
+          })
+          .join("; ") +
+        ".",
+    );
+  } else {
+    en.push("No grantee delivery on posted challenges (requires /accept + evidence PR).");
+    pt.push("Nenhuma entrega de grantee nos desafios publicados (exige /accept + PR de evidência).");
+  }
+
+  en.push(
+    "This brief interprets GitHub evidence for grantors. It is not a STRATA score, not treasury, and not a measure of euro value.",
+  );
+  pt.push(
+    "Este resumo interpreta evidência GitHub para grantors. Não é um score STRATA, não é tesouraria, nem uma medida de valor em euros.",
+  );
+
+  return { executive_en: en.join(" "), executive_pt: pt.join(" ") };
+}
+
+function extractLinkedPrs(timeline) {
+  const out = [];
+  const list = Array.isArray(timeline) ? timeline : [];
+  for (let i = 0; i < list.length; i++) {
+    const ev = list[i];
+    if (ev.event !== "cross-referenced" && ev.event !== "connected") continue;
+    const src = ev.source && ev.source.issue ? ev.source.issue : null;
+    if (!src || !src.pull_request) continue;
+    out.push({
+      title: src.title || "",
+      html_url: src.html_url,
+      number: src.number,
+      user: src.user && src.user.login ? src.user.login : null,
+    });
+  }
+  return out;
+}
+
+async function fetchIssueComments(env, number) {
+  const url =
+    "https://api.github.com/repos/" +
+    ORG +
+    "/" +
+    FUND_REPO +
+    "/issues/" +
+    number +
+    "/comments?per_page=100";
+  const pack = await ghJson(env, url);
+  return pack.ok && Array.isArray(pack.data) ? pack.data : [];
+}
+
+async function fetchIssueTimeline(env, number) {
+  const url =
+    "https://api.github.com/repos/" + ORG + "/" + FUND_REPO + "/issues/" + number + "/timeline?per_page=100";
+  const pack = await ghJson(env, url);
+  return pack.ok && Array.isArray(pack.data) ? pack.data : [];
+}
+
+async function buildRanking(env, prefetched) {
+  const cached = await kvGetFresh(env, "gh:ranking:v1", RANKING_CACHE_MS);
+  if (cached && cached.payload) return cached.payload;
+
+  const ch = prefetched && prefetched.challenges ? prefetched : await listChallenges(env);
+  const byNumber = {};
+  const listed = ch.challenges || [];
+  for (let i = 0; i < listed.length; i++) {
+    const c = listed[i];
+    if (c.repo && String(c.repo).indexOf(FUND_REPO) !== -1) byNumber[c.number] = c;
+  }
+
+  const packs = await Promise.all(
+    POSTED_CHALLENGE_NUMBERS.map(async function (n) {
+      const comments = await fetchIssueComments(env, n);
+      const meta0 = byNumber[n];
+      const labeled =
+        meta0 && (meta0.phase === "accepted" || meta0.phase === "delivered");
+      const acceptedHere =
+        labeled ||
+        comments.some(function (c) {
+          return isAcceptComment(c.body);
+        });
+      const timeline = acceptedHere ? await fetchIssueTimeline(env, n) : [];
+      return { n: n, comments: comments, timeline: timeline };
+    }),
+  );
+
+  const deliveryRows = [];
+  const activityByLogin = new Map();
+  let openCount = 0;
+
+  for (let i = 0; i < packs.length; i++) {
+    const pack = packs[i];
+    const n = pack.n;
+    const meta = byNumber[n] || {
+      number: n,
+      id: FUND_REPO + "#" + n,
+      html_url: challengeIssueUrl(n),
+      title: null,
+      phase: "open",
+      user: null,
+      assignees: [],
+      metrics_done: 0,
+      metrics_total: 0,
+      funded: false,
+      repo: ORG + "/" + FUND_REPO,
+    };
+    if ((meta.phase || "open") === "open") openCount++;
+
+    const comments = pack.comments || [];
+    const linkedPrs = extractLinkedPrs(pack.timeline);
+    const acceptComments = comments.filter(function (c) {
+      return isAcceptComment(c.body);
+    });
+    const accepted =
+      meta.phase === "accepted" ||
+      meta.phase === "delivered" ||
+      (meta.labels || []).indexOf("challenge-accepted") !== -1 ||
+      (meta.labels || []).indexOf("challenge-delivered") !== -1 ||
+      acceptComments.length > 0;
+
+    const grantees = new Set();
+    for (let a = 0; a < acceptComments.length; a++) {
+      const u = acceptComments[a].user && acceptComments[a].user.login;
+      if (u) grantees.add(u);
+    }
+    const assignees = meta.assignees || [];
+    for (let a = 0; a < assignees.length; a++) {
+      const login = assignees[a];
+      if (!login) continue;
+      if (login === meta.user && acceptComments.length === 0) continue;
+      grantees.add(login);
+    }
+
+    const metrics_done = meta.metrics_done || 0;
+    const hasLinked = linkedPrs.length > 0;
+    const score = (accepted ? 1 : 0) + (hasLinked ? 1 : 0) + metrics_done;
+
+    if (accepted && hasLinked && grantees.size) {
+      grantees.forEach(function (login) {
+        deliveryRows.push({
+          login: login,
+          challenge: meta.id,
+          number: n,
+          title: meta.title,
+          html_url: meta.html_url,
+          accepted: true,
+          linked_prs: linkedPrs,
+          metrics_done: metrics_done,
+          metrics_total: meta.metrics_total || 0,
+          funded: !!meta.funded,
+          score: score,
+        });
+      });
+    }
+
+    for (let c = 0; c < comments.length; c++) {
+      const comment = comments[c];
+      const login = comment.user && comment.user.login;
+      if (!login) continue;
+      if (comment.user && comment.user.type === "Bot") continue;
+      const key = String(login).toLowerCase();
+      const rec = activityByLogin.get(key) || {
+        login: login,
+        comments: 0,
+        issues: [],
+        role: login === OPERATOR.github_login ? "grantor_operator" : "commenter",
+      };
+      rec.comments += 1;
+      rec.issues.push({
+        number: n,
+        title: meta.title,
+        html_url: comment.html_url || meta.html_url,
+        issue_url: meta.html_url,
+      });
+      activityByLogin.set(key, rec);
+    }
+  }
+
+  const deliveries = deliveryRows.sort(function (a, b) {
+    return (b.score || 0) - (a.score || 0);
+  });
+  const activity = Array.from(activityByLogin.values())
+    .map(function (a) {
+      return {
+        login: a.login,
+        comments: a.comments,
+        score: a.comments,
+        issues: a.issues,
+        role: a.role,
+        kind: "activity",
+        note: "Issue comments, not grantee delivery.",
+        html_url: "https://github.com/" + a.login,
+      };
+    })
+    .sort(function (a, b) {
+      return (b.score || 0) - (a.score || 0);
+    });
+
+  const payload = {
+    generated_at: new Date().toISOString(),
+    challenges_open: openCount,
+    challenges_listed: POSTED_CHALLENGE_NUMBERS.length,
+    deliveries: deliveries,
+    activity: activity,
+    note: RANKING_NOTE,
+    rules: {
+      deliveries:
+        "accepted (/accept or challenge-accepted) + linked evidence PR + metrics_done. Opening a challenge as grantor does not count.",
+      activity:
+        "Comments on challenge issues excluding the original issue body. Labeled activity, not delivery.",
+      no_ai_scores: true,
+      no_strata: true,
+      no_treasury: true,
+    },
+  };
+  await kvPut(
+    env,
+    "gh:ranking:v1",
+    { cached_at: payload.generated_at, payload: payload },
+    Math.floor(RANKING_CACHE_MS / 1000),
+  );
+  return payload;
+}
+
+function openedChallengeNumbers(challenges, login) {
+  const out = [];
+  const list = challenges || [];
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (c.user !== login) continue;
+    if (!c.repo || String(c.repo).indexOf(FUND_REPO) === -1) continue;
+    if (POSTED_CHALLENGE_NUMBERS.indexOf(c.number) === -1) continue;
+    out.push(c.number);
+  }
+  out.sort(function (a, b) {
+    return a - b;
+  });
+  return out;
+}
+
+async function enrichContributor(env, contributor, ctx) {
+  const login = contributor.github_login;
+  const ranking = (ctx && ctx.ranking) || { deliveries: [], activity: [] };
+  const challenges = (ctx && ctx.challenges) || [];
+  const subPack = await fetchSubstance(env, login);
+  const opened = openedChallengeNumbers(challenges, login);
+  const isOperator = login === OPERATOR.github_login || contributor.github_user_id === OPERATOR.github_user_id;
+  const activity =
+    (ranking.activity || []).find(function (a) {
+      return String(a.login).toLowerCase() === String(login).toLowerCase();
+    }) || null;
+  const deliveries = (ranking.deliveries || []).filter(function (d) {
+    return String(d.login).toLowerCase() === String(login).toLowerCase();
+  });
+  const stats = {
+    contributions: contributor.contributions || 0,
+    repositories: contributor.repositories || [],
+    claimed: !!contributor.claimed,
+    operator: isOperator,
+  };
+  const brief = interpretExecutive({
+    login: login,
+    stats: stats,
+    substance: subPack.substance,
+    openedChallenges: opened,
+    activity: activity,
+    deliveries: deliveries,
+    isOperator: isOperator,
+  });
+  return Object.assign({}, contributor, {
+    summary: {
+      stats: stats,
+      substance: subPack.substance,
+      executive_pt: brief.executive_pt,
+      executive_en: brief.executive_en,
+      evidence_at: subPack.evidence_at,
+    },
+  });
+}
+
+async function contributorsWithSummaries(env) {
+  const data = await discoverContributors(env);
+  const ch = await listChallenges(env);
+  const ranking = await buildRanking(env, ch);
+  const contributors = await Promise.all(
+    (data.contributors || []).map(function (c) {
+      return enrichContributor(env, c, { ranking: ranking, challenges: ch.challenges });
+    }),
+  );
+  return {
+    contributors: contributors,
+    aggregate: data.aggregate,
+    ranking: ranking,
+    challenges: ch.challenges,
+  };
+}
+
+function rankingSectionHtml(lang, ranking) {
+  const pt = lang === "pt";
+  const r = ranking || {};
+  const deliveries = r.deliveries || [];
+  const activity = r.activity || [];
+  const delRows = deliveries.length
+    ? deliveries
+        .map(function (d) {
+          const prs = (d.linked_prs || [])
+            .map(function (p) {
+              return '<a href="' + esc(p.html_url) + '" rel="noopener">PR#' + esc(p.number) + "</a>";
+            })
+            .join(" · ");
+          return (
+            "<tr><td><a href=\"/contributors/" +
+            esc(d.login) +
+            (pt ? "" : "?lang=en") +
+            '">@' +
+            esc(d.login) +
+            "</a></td><td><a href=\"" +
+            esc(d.html_url) +
+            '" rel="noopener">' +
+            esc(d.challenge) +
+            "</a></td><td class=\"mono\">" +
+            esc(d.score) +
+            "</td><td class=\"mono\">" +
+            (prs || "—") +
+            "</td></tr>"
+          );
+        })
+        .join("")
+    : '<tr><td colspan="4" class="muted">' +
+      (pt
+        ? "Nenhuma entrega de grantee ainda. 0 /accept, 0 financed, métricas por marcar nos 9 desafios. O ranking não trata o autor do issue (grantor) como se tivesse resolvido o desafio."
+        : "No grantee deliveries yet. 0 /accept, 0 funded, metrics unchecked on all 9 challenges. Ranking does not treat the issue author (grantor) as having solved the challenge.") +
+      "</td></tr>";
+  const actRows = activity.length
+    ? activity
+        .map(function (a) {
+          const links = (a.issues || [])
+            .map(function (i) {
+              return '<a href="' + esc(i.html_url) + '" rel="noopener">#' + esc(i.number) + "</a>";
+            })
+            .filter(function (v, i, arr) {
+              return arr.indexOf(v) === i;
+            })
+            .join(" · ");
+          const role =
+            a.role === "grantor_operator"
+              ? '<div class="muted">' + (pt ? "grantor / operador — actividade, não entrega" : "grantor / operator — activity, not delivery") + "</div>"
+              : "";
+          return (
+            "<tr><td><a href=\"https://github.com/" +
+            esc(a.login) +
+            '" rel="noopener">@' +
+            esc(a.login) +
+            "</a>" +
+            role +
+            '</td><td class="mono">' +
+            esc(a.comments) +
+            "</td><td class=\"mono\">" +
+            (links || "—") +
+            "</td></tr>"
+          );
+        })
+        .join("")
+    : '<tr><td colspan="3" class="muted">' +
+      (pt ? "Sem comentários nos desafios #1–#9 (excluindo o corpo original)." : "No comments on challenges #1–#9 (excluding the original issue body).") +
+      "</td></tr>";
+  return (
+    '<div class="section">' +
+    "<h2>Ranking</h2>" +
+    '<p class="lead">' +
+    (pt
+      ? "Ranking só de trabalho ligado aos desafios publicados (#1–#9 neste repositório). Abrir um desafio como grantor não conta como entrega de grantee. Sem scores de IA, sem STRATA, sem tesouraria."
+      : "Ranking from work linked to posted challenges (#1–#9 on this repository) only. Opening a challenge as grantor does not count as grantee delivery. No AI scores, no STRATA, no treasury.") +
+    "</p>" +
+    '<p class="note">' +
+    esc(r.note || RANKING_NOTE) +
+    "</p>" +
+    "<h2>" +
+    (pt ? "Entregas" : "Deliveries") +
+    "</h2>" +
+    '<div class="card" style="padding:0;overflow:auto"><table><thead><tr>' +
+    "<th>" +
+    (pt ? "Grantee" : "Grantee") +
+    "</th><th>" +
+    (pt ? "Desafio" : "Challenge") +
+    "</th><th>Score</th><th>" +
+    (pt ? "Evidência" : "Evidence") +
+    "</th></tr></thead><tbody>" +
+    delRows +
+    "</tbody></table></div>" +
+    "<h2>" +
+    (pt ? "Actividade (não é entrega)" : "Activity (not delivery)") +
+    "</h2>" +
+    '<p class="muted">' +
+    (pt
+      ? "Comentários nas issues dos desafios, excluindo o corpo original. Isto não é ranking de entrega."
+      : "Comments on challenge issues, excluding the original issue body. This is not a delivery ranking.") +
+    "</p>" +
+    '<div class="card" style="padding:0;overflow:auto"><table><thead><tr>' +
+    "<th>" +
+    (pt ? "Quem" : "Who") +
+    "</th><th>" +
+    (pt ? "Comentários" : "Comments") +
+    "</th><th>" +
+    (pt ? "Evidência" : "Evidence") +
+    "</th></tr></thead><tbody>" +
+    actRows +
+    "</tbody></table></div>" +
+    '<p class="mono muted"><a href="/api/v1/ranking">GET /api/v1/ranking</a></p>' +
+    "</div>"
+  );
+}
+
+
 function resolveLang(url, path) {
   const q = url.searchParams.get("lang");
   if (q === "en") return "en";
@@ -721,7 +1501,7 @@ function homePage(lang, agg, sp) {
     </div>
     <div class="section">
       <h2>API</h2>
-      <p class="mono muted">GET /api/v1/health · /contributors · /repositories · /payout-methods · /claim (POST)</p>
+      <p class="mono muted">GET /api/v1/health · /contributors · /ranking · /repositories · /payout-methods · /claim (POST)</p>
     </div>`;
   return shell({ lang, path, title: "StrataMesh Impact Fund", active: "home", body });
 }
@@ -743,9 +1523,12 @@ function contributorsPage(lang, data) {
           : c.claimed
             ? `<span class="muted">${esc(pay.status || "claimed")}</span>`
             : `<a href="/claim?${pt ? "" : "lang=en&"}login=${encodeURIComponent(c.github_login)}">${pt ? "Reclamar" : "Claim"}</a>`;
+      const brief = c.summary ? (pt ? c.summary.executive_pt : c.summary.executive_en) : "";
+      const excerpt = firstSentence(brief);
       return `<tr>
         <td>${c.avatar_url ? `<img class="avatar" src="${esc(c.avatar_url)}" alt="" width="28" height="28"/>` : ""}
-          <a href="/contributors/${esc(c.github_login)}${enQ}">@${esc(c.github_login)}</a></td>
+          <a href="/contributors/${esc(c.github_login)}${enQ}">@${esc(c.github_login)}</a>
+          ${excerpt ? `<div class="muted" style="font-size:.82rem;margin-top:.3rem">${esc(excerpt)}</div>` : ""}</td>
         <td class="mono">${c.contributions != null ? c.contributions : 0}</td>
         <td class="muted">${esc((c.repositories || []).join(", "))}</td>
         <td>${status}<div style="margin-top:.35rem">${link}</div></td>
@@ -758,8 +1541,8 @@ function contributorsPage(lang, data) {
     <h1>${pt ? "Contribuidores" : "Contributors"}</h1>
     <p class="lead">${
       pt
-        ? "Agregado a partir da API GitHub dos repositórios da organização. Totais de contribuição por utilizador."
-        : "Aggregated from the GitHub API across organization repositories. Contribution totals per user."
+        ? "Agregado a partir da API GitHub dos repositórios da organização. O resumo de uma linha interpreta totais + substância pública — não é um score de valor."
+        : "Aggregated from the GitHub API across organization repositories. The one-line brief interprets totals + public substance — not a value score."
     }</p>
     <div class="card" style="padding:0;overflow:auto">
       <table>
@@ -784,6 +1567,22 @@ function detailPage(lang, profile) {
   const pt = lang === "pt";
   const login = profile.github_login;
   const pay = profile.payout || {};
+  const sum = profile.summary || null;
+  let briefBlock = "";
+  if (sum) {
+    const exec = pt ? sum.executive_pt : sum.executive_en;
+    const items = (sum.substance || [])
+      .slice(0, 8)
+      .map((s) => `<li><span class="mono">${esc(s.kind)}</span> · <a href="${esc(s.html_url)}" rel="noopener">${esc(s.title)}</a> <span class="muted">${esc(s.repo)}</span></li>`)
+      .join("");
+    briefBlock = `
+      <div class="section">
+        <h2>${pt ? "Resumo para grantors" : "Grantor brief"}</h2>
+        <p>${esc(exec)}</p>
+        ${items ? `<ul class="steps">${items}</ul>` : `<p class="muted">${pt ? "Sem títulos de evidência GitHub devolvidos pela API." : "No GitHub evidence titles returned by the API."}</p>`}
+        <p class="mono muted">${pt ? "interpretação de evidência GitHub · não é score de valor" : "GitHub-evidence interpretation · not a value score"} · ${esc(sum.evidence_at || "")}</p>
+      </div>`;
+  }
   let payBlock = "";
   if (pay.method === "eni_pagamentos") {
     payBlock = `
@@ -813,12 +1612,13 @@ function detailPage(lang, profile) {
       <div class="stat-box"><div class="stat mono" style="font-size:.85rem">${esc(pay.method || pay.status || "—")}</div><div class="stat-label">payout</div></div>
     </div>
     <p class="muted">${esc((profile.repositories || []).join(", "))}</p>
+    ${briefBlock}
     ${payBlock}`;
   return shell({ lang, path: `/contributors/${login}`, title: `@${login} · Impact Fund`, active: "contributors", body });
 }
 
 
-function challengesPage(lang, data, sponsors) {
+function challengesPage(lang, data, sponsors, ranking) {
   const pt = lang === "pt";
   const path = pt ? "/challenges" : "/challenges?lang=en";
   const list = (data && data.challenges) || [];
@@ -882,6 +1682,7 @@ function challengesPage(lang, data, sponsors) {
         <tbody>${rows || `<tr><td colspan="5" class="muted">${pt ? "Sem desafios abertos." : "No open challenges."}</td></tr>`}</tbody>
       </table>
     </div>
+    ${rankingSectionHtml(lang, ranking)}
     <div class="section">
       <h2>${pt ? "Como funciona" : "How it works"}</h2>
       <ol class="steps">
@@ -1078,7 +1879,7 @@ export default {
     }
 
     if (path === "/api/v1/contributors") {
-      const data = await discoverContributors(env);
+      const data = await contributorsWithSummaries(env);
       return json({
         phase: "v0-operational",
         aggregate: data.aggregate,
@@ -1088,12 +1889,17 @@ export default {
 
     if (path.startsWith("/api/v1/contributors/")) {
       const key = decodeURIComponent(path.split("/").pop());
-      const data = await discoverContributors(env);
+      const data = await contributorsWithSummaries(env);
       const found = data.contributors.find(
         (c) => String(c.github_login).toLowerCase() === key.toLowerCase() || String(c.github_user_id) === key,
       );
       if (!found) return json({ error: "not_found", github_login: key }, 404);
       return json(found);
+    }
+
+    if (path === "/api/v1/ranking" || path === "/api/v1/challenge-ranking") {
+      const ranking = await buildRanking(env);
+      return json(ranking);
     }
 
     if (path === "/api/v1/claim" && request.method === "POST") {
@@ -1149,12 +1955,12 @@ export default {
       return html(homePage("en", data.aggregate, sp));
     }
     if (path === "/contributors") {
-      const data = await discoverContributors(env);
+      const data = await contributorsWithSummaries(env);
       return html(contributorsPage(lang, data));
     }
     if (path.startsWith("/contributors/")) {
       const key = decodeURIComponent(path.split("/").pop() || "");
-      const data = await discoverContributors(env);
+      const data = await contributorsWithSummaries(env);
       let found = data.contributors.find((c) => c.github_login.toLowerCase() === key.toLowerCase());
       if (!found && key.toLowerCase() === "amcmorais") {
         found = data.contributors.find((c) => c.github_login === OPERATOR.github_login);
@@ -1176,7 +1982,8 @@ export default {
     
     if (path === "/challenges") {
       const [data, sp] = await Promise.all([listChallenges(env), sponsorsStatus(env)]);
-      return html(challengesPage(lang, data, sp));
+      const ranking = await buildRanking(env, data);
+      return html(challengesPage(lang, data, sp, ranking));
     }
     if (path === "/claim") {
       return html(claimPage(lang, url.searchParams.get("login") || ""));
