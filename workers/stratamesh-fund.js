@@ -1,5 +1,5 @@
 /**
- * stratamesh-fund — fund.calhegasmorais.pt
+ * stratamesh-fund — node.spencer-morais.pt/fund
  * v0.4.7 — grantor brief + challenge /accept surface (no EUR).
  *
  * GitHub = evidence · Fund = stats + payout routing
@@ -10,7 +10,7 @@ const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
   { owner: ORG, name: "stratamesh-laboratory", role: "Lab charter & posture" },
-  { owner: ORG, name: "calhegas-morais-node", role: "Reference Fog Node registry" },
+  { owner: ORG, name: "spencer-morais-node", role: "Reference Fog Node registry" },
   { owner: ORG, name: "stratamesh-impact-fund", role: "This fund application" },
 ];
 
@@ -22,7 +22,7 @@ const OPERATOR = {
   status: "active",
   widget_url: "https://calhegasmorais.pt/pagamentos",
   widget_note:
-    "AMCM ENI payment portal — unique bank-transfer instruction (IBAN not published). Purpose: donation to the Calhegas Morais Node / StrataMesh project.",
+    "AMCM ENI payment portal — unique bank-transfer instruction (IBAN not published). Purpose: donation to the Spencer-Morais Node / StrataMesh project.",
   payment_intent_purpose: "donation",
   contact: "geral@eni.calhegasmorais.pt",
 };
@@ -191,7 +191,7 @@ function shell({ lang, path, title, active, body }) {
       <span class="sep">·</span>
       <a href="${pt ? "/en" : "/"}">${pt ? "EN" : "PT"}</a>
       <span class="sep">·</span>
-      <a href="https://calhegasmorais.pt/">Nó</a>
+      <a href="https://node.spencer-morais.pt/">Nó</a>
       <span class="sep">·</span>
       <a href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund">GitHub</a>
     </nav>`;
@@ -202,7 +202,7 @@ function shell({ lang, path, title, active, body }) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${esc(title)}</title>
   <meta name="description" content="${pt ? "Fundo StrataMesh — evidência GitHub, GitHub Sponsors e grants por recipiente." : "StrataMesh fund — GitHub evidence, GitHub Sponsors, and per-recipient grants."}"/>
-  <link rel="canonical" href="https://fund.calhegasmorais.pt${path.split("?")[0]}"/>
+  <link rel="canonical" href="https://node.spencer-morais.pt/fund${path.split("?")[0]}"/>
   <style>${css()}</style>
 </head>
 <body>

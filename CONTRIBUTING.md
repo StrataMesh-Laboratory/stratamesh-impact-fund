@@ -10,7 +10,7 @@
 |------------|--------|
 | [stratamesh-core](https://github.com/StrataMesh-Laboratory/stratamesh-core) | Protocol core, workers, DAG, tip selection, docs |
 | [stratamesh-laboratory](https://github.com/StrataMesh-Laboratory/stratamesh-laboratory) | Charter, posture, research ladder |
-| [calhegas-morais-node](https://github.com/StrataMesh-Laboratory/calhegas-morais-node) | Reference Fog node registry |
+| [spencer-morais-node](https://github.com/StrataMesh-Laboratory/spencer-morais-node) | Reference Fog node registry |
 | [stratamesh-impact-fund](https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund) | Impact Fund app · challenges · Sponsors rails |
 
 **Do not** use [`amcmorais/stratamesh-core`](https://github.com/amcmorais/stratamesh-core) — it is **archived** (outdated personal path).
@@ -23,7 +23,7 @@
 4. Fill the PR template; link issues / impact challenges when relevant.
 5. Keep changes reviewable; add tests for behavioural core changes.
 
-Issues and [Impact challenges](https://fund.calhegasmorais.pt/challenges) (`impact-challenge` label) are first-class entry points. Funded work uses the same PR path with metrics on the issue.
+Issues and [Impact challenges](https://node.spencer-morais.pt/fund/challenges) (`impact-challenge` label) are first-class entry points. Funded work uses the same PR path with metrics on the issue.
 
 ## Lab honesty
 

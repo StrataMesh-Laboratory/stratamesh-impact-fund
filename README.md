@@ -1,6 +1,6 @@
 # StrataMesh Impact Fund
 
-**Live:** [fund.calhegasmorais.pt](https://fund.calhegasmorais.pt/)  
+**Live:** [node.spencer-morais.pt/fund](https://node.spencer-morais.pt/fund/)  
 **Operator entity:** [AMCM ENI](https://github.com/amcmorais/amcm-eni)  
 **Laboratory:** [StrataMesh-Laboratory](https://github.com/StrataMesh-Laboratory)
 
@@ -68,6 +68,6 @@ Not an investment product. Not a token sale. Not mainnet economics.
 The Fund is one incentive rail for people already expert in **P2P, edge, distributed compute, agents, IoT, simulation** — see the laboratory outreach map:
 
 - [COMMUNITY-OUTREACH-MAP.md](https://github.com/StrataMesh-Laboratory/stratamesh-core/blob/main/docs/COMMUNITY-OUTREACH-MAP.md)
-- Live challenges: https://fund.calhegasmorais.pt/challenges
+- Live challenges: https://node.spencer-morais.pt/fund/challenges
 
 Prefer **problem-shaped** grants (objective metrics on Issues) over “pay random commits.”
