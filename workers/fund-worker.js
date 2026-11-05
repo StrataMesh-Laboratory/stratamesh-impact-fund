@@ -1,5 +1,5 @@
 /**
- * stratamesh-fund — fund.calhegasmorais.pt
+ * stratamesh-fund — node.spencer-morais.pt/fund
  * V0: public explorer shell + read API stubs.
  * GitHub = evidence · Fund = statistics + (later) grants.
  * No STRATA · no GDA · no AI impact scores in V0.
@@ -10,7 +10,7 @@ const ORG = "StrataMesh-Laboratory";
 const REPOS = [
   { owner: ORG, name: "stratamesh-core", role: "Protocol core" },
   { owner: ORG, name: "stratamesh-laboratory", role: "Lab charter & posture" },
-  { owner: ORG, name: "calhegas-morais-node", role: "Reference Fog Node registry" },
+  { owner: ORG, name: "spencer-morais-node", role: "Reference Fog Node registry" },
   { owner: ORG, name: "stratamesh-impact-fund", role: "This fund application" },
 ];
 
@@ -117,9 +117,9 @@ function page(lang, path) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${t.title}</title>
   <meta name="description" content="${t.lead}"/>
-  <link rel="canonical" href="https://fund.calhegasmorais.pt${path}"/>
-  <link rel="alternate" hreflang="pt-PT" href="https://fund.calhegasmorais.pt/"/>
-  <link rel="alternate" hreflang="en-GB" href="https://fund.calhegasmorais.pt/en"/>
+  <link rel="canonical" href="https://node.spencer-morais.pt/fund${path}"/>
+  <link rel="alternate" hreflang="pt-PT" href="https://node.spencer-morais.pt/fund/"/>
+  <link rel="alternate" hreflang="en-GB" href="https://node.spencer-morais.pt/fund/en"/>
   <style>
     :root {
       --bg: #0b0f14;
@@ -178,7 +178,7 @@ function page(lang, path) {
   <div class="wrap">
     <header>
       <div class="brand"><a href="${t.homeHref}" style="color:inherit;text-decoration:none">${t.title}</a></div>
-      <div class="muted"><a href="${t.langHref}">${t.langOther}</a> · <a href="https://calhegasmorais.pt/">calhegasmorais.pt</a> · <a href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund">GitHub</a></div>
+      <div class="muted"><a href="${t.langHref}">${t.langOther}</a> · <a href="https://node.spencer-morais.pt/">calhegasmorais.pt</a> · <a href="https://github.com/StrataMesh-Laboratory/stratamesh-impact-fund">GitHub</a></div>
     </header>
 
     <p class="pill">${t.phase}</p>

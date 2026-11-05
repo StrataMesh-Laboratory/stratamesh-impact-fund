@@ -89,7 +89,7 @@ Aligned with Calhegas Morais environment where practical:
 | Data | D1 (lab) → PostgreSQL when volume warrants |
 | Auth | GitHub OAuth / GitHub App |
 | Payments | External regulated provider (tokenized IDs only) |
-| Domain | `fund.calhegasmorais.pt` |
+| Domain | `node.spencer-morais.pt/fund` |
 
 Application code remains open in this repository so the funding model is inspectable independently of protocol code in `stratamesh-core`.
 

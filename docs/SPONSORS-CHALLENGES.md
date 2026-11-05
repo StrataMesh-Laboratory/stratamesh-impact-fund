@@ -12,7 +12,7 @@
 
 ## Fund surfaces
 
-- https://fund.calhegasmorais.pt/challenges
+- https://node.spencer-morais.pt/fund/challenges
 - `GET /api/v1/challenges` · `GET /api/v1/sponsors` · `GET /api/v1/health`
 
 ## Agreement
@@ -22,7 +22,7 @@ Metrics checklists live on the Issue. Label `metrics-agreed` when grantor and gr
 
 ## Honest envelope (not treasury)
 
-V0 has **no deposited, pledged, or reserved EUR**. The Orçamento column on https://fund.calhegasmorais.pt/challenges is **not a treasury**.
+V0 has **no deposited, pledged, or reserved EUR**. The Orçamento column on https://node.spencer-morais.pt/fund/challenges is **not a treasury**.
 
 Rules:
 
